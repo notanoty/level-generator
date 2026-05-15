@@ -24,7 +24,7 @@ namespace WFC
         [Tooltip("Prefab to place as the starting tile (baseTile). If null the generator will pick one from the folder.")]
         public GameObject baseTilePrefab;
 
-        [Tooltip("Prefab to use for cells where no valid tile can be placed. If null such cells will be left empty.")]
+        [Tooltip("Legacy fallback prefab. Generator now always places a regular tile when constraints fail.")]
         public GameObject emptyTilePrefab;
 
         [Tooltip("World size of each tile cell. Defaults to 100x100.")]
@@ -157,8 +157,8 @@ namespace WFC
 
                         if (candidates.Count == 0)
                         {
-                            // No matching tile found — leave the spot empty
-                            prefabToInstantiate = null;
+                            // No matching tile found - fall back to any available tile so no cells stay empty.
+                            prefabToInstantiate = tilePrefabs[Random.Range(0, tilePrefabs.Count)];
                         }
                         else
                         {
@@ -166,19 +166,10 @@ namespace WFC
                         }
                     }
 
-                    // If no prefab was chosen, use the emptyTilePrefab if provided, otherwise leave the cell empty
+                    // Safety fallback: always place a regular tile.
                     if (prefabToInstantiate == null)
                     {
-                        if (emptyTilePrefab != null)
-                        {
-                            prefabToInstantiate = emptyTilePrefab;
-                        }
-                        else
-                        {
-                            // leave empty
-                            placed[x, y] = null;
-                            continue;
-                        }
+                        prefabToInstantiate = tilePrefabs[Random.Range(0, tilePrefabs.Count)];
                     }
 
                     GameObject instance = null;
@@ -251,7 +242,9 @@ namespace WFC
                 // e.g. if neighbor is left, requiredDirectionFromNeighbor == East (neighbor's east must connect to candidate)
                 bool a = neighbor.IsCompatibleWith(tile, requiredDirectionFromNeighbor);
                 bool b = tile.IsCompatibleWith(neighbor, DirectionUtils.Opposite(requiredDirectionFromNeighbor));
-                if (a && b) res.Add(prefab);
+
+                // Less strict rule: allow if either side declares the connection valid.
+                if (a || b) res.Add(prefab);
             }
             return res;
         }

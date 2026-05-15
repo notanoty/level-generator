@@ -67,13 +67,13 @@ namespace WFC
         }
 
         /// <summary>
-        /// True if this tile explicitly allows connecting to the given tile.
-        /// If the list is empty, any tile is allowed and compatibility falls back to direction rules.
+        /// True if this tile explicitly allows connecting to the given tile in the given direction.
+        /// If the list is empty, there is no explicit rule.
         /// </summary>
         public bool CanConnectTo(Tile other, Direction dir)
         {
             if (other == null) return false;
-            if (connectedTiles == null || connectedTiles.Count == 0) return true;
+            if (connectedTiles == null || connectedTiles.Count == 0) return false;
 
             foreach (var connection in connectedTiles)
             {
@@ -87,16 +87,17 @@ namespace WFC
 
         /// <summary>
         /// Quick check whether this tile is compatible with another tile when this tile faces the given direction.
-        /// It checks this tile has 'dir', the other tile has the opposite direction, and the other tile is allowed in the connected tiles list.
+        /// A connection is valid if directional sockets match OR there is an explicit connectedTiles rule.
         /// </summary>
         public bool IsCompatibleWith(Tile other, Direction dir)
         {
             if (other == null) return false;
-            if (!CanConnectTo(other, dir)) return false;
 
             Direction thisCon = GetRotatedConnections();
             Direction otherCon = other.GetRotatedConnections();
-            return DirectionUtils.Has(thisCon, dir) && DirectionUtils.Has(otherCon, DirectionUtils.Opposite(dir));
+            bool byDirection = DirectionUtils.Has(thisCon, dir) && DirectionUtils.Has(otherCon, DirectionUtils.Opposite(dir));
+            bool byExplicitRule = CanConnectTo(other, dir);
+            return byDirection || byExplicitRule;
         }
 
         void Update()
