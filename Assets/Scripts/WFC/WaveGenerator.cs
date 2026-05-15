@@ -63,7 +63,16 @@ namespace WFC
                 return;
             }
 
-            Transform container = parentContainer;
+            Transform container = null;
+            if (parentContainer != null && parentContainer.IsChildOf(transform))
+            {
+                container = parentContainer;
+            }
+            else if (parentContainer != null)
+            {
+                Debug.LogWarning("WaveGenerator parentContainer must be a child of the generator. Falling back to local container.", this);
+            }
+
             if (container == null)
             {
                 // find or create container child
@@ -116,47 +125,14 @@ namespace WFC
                         bool placedBase = false;
                         if (baseTilePrefab != null)
                         {
-                            var baseTileComp = baseTilePrefab.GetComponent<Tile>();
-                            if (baseTileComp != null)
-                            {
-                                // Only Road tiles are blocked from opening outside the map borders.
-                                bool baseIsRoad = baseTilePrefab.CompareTag("Road");
-                                Direction baseCon = baseTileComp.GetRotatedConnections();
-                                bool baseLeadsOut = (x == 0 && DirectionUtils.Has(baseCon, Direction.West)) ||
-                                                    (x == width - 1 && DirectionUtils.Has(baseCon, Direction.East)) ||
-                                                    (y == 0 && DirectionUtils.Has(baseCon, Direction.South)) ||
-                                                    (y == height - 1 && DirectionUtils.Has(baseCon, Direction.North));
-                                if (!(baseIsRoad && baseLeadsOut))
-                                {
-                                    prefabToInstantiate = baseTilePrefab;
-                                    placedBase = true;
-                                }
-                            }
+                            prefabToInstantiate = baseTilePrefab;
+                            placedBase = true;
                         }
 
                         if (!placedBase)
                         {
-                            // try to find any tile that fits the border constraints
-                            List<GameObject> candidates = new List<GameObject>(tilePrefabs);
-                            List<GameObject> borderFiltered = new List<GameObject>();
-                            foreach (var prefab in candidates)
-                            {
-                                if (prefab == null) continue;
-                                var tile = prefab.GetComponent<Tile>();
-                                if (tile == null) continue;
-                                bool isRoad = prefab.CompareTag("Road");
-                                Direction c = tile.GetRotatedConnections();
-                                if (isRoad && x == 0 && DirectionUtils.Has(c, Direction.West)) continue;
-                                if (isRoad && x == width - 1 && DirectionUtils.Has(c, Direction.East)) continue;
-                                if (isRoad && y == 0 && DirectionUtils.Has(c, Direction.South)) continue;
-                                if (isRoad && y == height - 1 && DirectionUtils.Has(c, Direction.North)) continue;
-                                borderFiltered.Add(prefab);
-                            }
-
-                            if (borderFiltered.Count > 0)
-                                prefabToInstantiate = borderFiltered[Random.Range(0, borderFiltered.Count)];
-                            else
-                                prefabToInstantiate = null; // leave empty if nothing fits
+                            // fallback to any tile from the tiles list
+                            prefabToInstantiate = tilePrefabs[Random.Range(0, tilePrefabs.Count)];
                         }
                     }
                     else
@@ -178,23 +154,6 @@ namespace WFC
                             candidates = FilterByNeighbor(candidates, bottomTile, Direction.North);
                         }
 
-                        // Border checks: only Road candidates are blocked if they lead outside the grid
-                        List<GameObject> borderFiltered = new List<GameObject>();
-                        foreach (var prefab in candidates)
-                        {
-                            if (prefab == null) continue;
-                            var tile = prefab.GetComponent<Tile>();
-                            if (tile == null) continue;
-                            bool isRoad = prefab.CompareTag("Road");
-                            Direction c = tile.GetRotatedConnections();
-                            if (isRoad && x == 0 && DirectionUtils.Has(c, Direction.West)) continue;
-                            if (isRoad && x == width - 1 && DirectionUtils.Has(c, Direction.East)) continue;
-                            if (isRoad && y == 0 && DirectionUtils.Has(c, Direction.South)) continue;
-                            if (isRoad && y == height - 1 && DirectionUtils.Has(c, Direction.North)) continue;
-                            borderFiltered.Add(prefab);
-                        }
-
-                        candidates = borderFiltered;
 
                         if (candidates.Count == 0)
                         {
