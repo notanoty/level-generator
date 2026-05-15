@@ -1,5 +1,8 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace WFC
 {
@@ -139,6 +142,79 @@ namespace WFC
                 transform.position = snapped;
             }
         }
+
+#if UNITY_EDITOR
+        // Draw visual indicators in the Scene view to show which directions are set on this tile
+        private void OnDrawGizmosSelected()
+        {
+            // Use handles for nicer arrows
+            var con = GetRotatedConnections();
+            Vector3 center = transform.position;
+
+            float cellX = Mathf.Max(1f, gridSize.x);
+            float cellY = Mathf.Max(1f, gridSize.y);
+            float len = Mathf.Max(cellX, cellY) * 0.5f;
+            float headSize = len * 0.25f;
+
+            // Draw background circle
+            Handles.color = new Color(0f, 0f, 0f, 0.25f);
+            Handles.DrawSolidDisc(center, Vector3.up, Mathf.Min(len * 0.6f, 1.0f));
+
+            // Direction arrows
+            if (DirectionUtils.Has(con, Direction.North))
+            {
+                DrawArrow(center, Vector3.forward, len, headSize, Color.green);
+            }
+            if (DirectionUtils.Has(con, Direction.East))
+            {
+                DrawArrow(center, Vector3.right, len, headSize, Color.green);
+            }
+            if (DirectionUtils.Has(con, Direction.South))
+            {
+                DrawArrow(center, Vector3.back, len, headSize, Color.green);
+            }
+            if (DirectionUtils.Has(con, Direction.West))
+            {
+                DrawArrow(center, Vector3.left, len, headSize, Color.green);
+            }
+
+            // Draw connectedTiles relations (if any)
+            if (connectedTiles != null)
+            {
+                Handles.color = Color.cyan;
+                foreach (var ct in connectedTiles)
+                {
+                    if (ct == null || ct.tile == null) continue;
+                    // draw line to referenced tile
+                    var otherPos = ct.tile.transform.position;
+                    Handles.DrawDottedLine(center, otherPos, 4f);
+                    // also draw an arrow on this tile in the specified direction
+                    var dirVec = DirectionToVector3(ct.direction);
+                    if (dirVec != Vector3.zero)
+                        DrawArrow(center, dirVec, len * 0.5f, headSize * 0.5f, Color.cyan);
+                }
+            }
+        }
+
+        private static Vector3 DirectionToVector3(Direction d)
+        {
+            if (DirectionUtils.Has(d, Direction.North)) return Vector3.forward;
+            if (DirectionUtils.Has(d, Direction.East)) return Vector3.right;
+            if (DirectionUtils.Has(d, Direction.South)) return Vector3.back;
+            if (DirectionUtils.Has(d, Direction.West)) return Vector3.left;
+            return Vector3.zero;
+        }
+
+        private static void DrawArrow(Vector3 origin, Vector3 dir, float length, float headSize, Color color)
+        {
+            Handles.color = color;
+            Vector3 end = origin + dir.normalized * length;
+            Handles.DrawLine(origin, end);
+            // draw cone for head
+            Quaternion rot = Quaternion.LookRotation(dir);
+            Handles.ConeHandleCap(0, end, rot, headSize, EventType.Repaint);
+        }
+#endif
     }
 }
 

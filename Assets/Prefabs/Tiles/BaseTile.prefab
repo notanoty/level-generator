@@ -127,6 +127,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WFC.Tile
   texture: {fileID: 0}
-  connections: -1
+  connections: 0
   rotation: 0
   connectedTiles: []
+  gridSize: {x: 100, y: 100}
+  snapPlane: 1
+  snapInEditor: 1
+  snapInPlayMode: 0
+  snapThreshold: 0.001
