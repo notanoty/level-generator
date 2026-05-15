@@ -14,6 +14,7 @@ namespace WFC
     }
 
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class Tile : MonoBehaviour
     {
         [Tooltip("Texture2D used to represent this tile in the editor and at runtime.")]
@@ -28,6 +29,23 @@ namespace WFC
 
         [Tooltip("Tiles that this tile is allowed to connect to, including the direction where each connection is allowed. Leave empty to allow any tile that matches the directions.")]
         public List<ConnectedTile> connectedTiles;
+
+        [Header("Grid Snapping")]
+        [Tooltip("Grid size (width, height) in world units used for snapping.")]
+        public Vector2 gridSize = new Vector2(100f, 100f);
+
+        public enum SnapPlane { XY, XZ }
+        [Tooltip("Plane in which to snap positions.")]
+        public SnapPlane snapPlane = SnapPlane.XZ;
+
+        [Tooltip("Whether to snap the tile automatically while editing in the Scene view.")]
+        public bool snapInEditor = true;
+
+        [Tooltip("Whether to snap the tile automatically during Play mode.")]
+        public bool snapInPlayMode = false;
+
+        [Tooltip("Minimum distance to grid before snapping is applied (prevents tiny adjustments).")]
+        public float snapThreshold = 0.001f;
 
         /// <summary>
         /// Returns the connections after applying the configured rotation (rotation is in 90-degree clockwise steps).
@@ -76,6 +94,50 @@ namespace WFC
             Direction thisCon = GetRotatedConnections();
             Direction otherCon = other.GetRotatedConnections();
             return DirectionUtils.Has(thisCon, dir) && DirectionUtils.Has(otherCon, DirectionUtils.Opposite(dir));
+        }
+
+        void Update()
+        {
+            // Decide whether snapping should run right now
+            if (!Application.isPlaying && !snapInEditor) return;
+            if (Application.isPlaying && !snapInPlayMode) return;
+
+            SnapToGridIfNeeded();
+        }
+
+        [ContextMenu("Snap To Grid")]
+        public void SnapToGrid()
+        {
+            SnapToGridIfNeeded(force: true);
+        }
+
+        private void SnapToGridIfNeeded(bool force = false)
+        {
+            if (gridSize.x <= 0f || gridSize.y <= 0f) return;
+
+            Vector3 pos = transform.position;
+            Vector3 snapped = pos;
+
+            if (snapPlane == SnapPlane.XZ)
+            {
+                snapped.x = Mathf.Round(pos.x / gridSize.x) * gridSize.x;
+                snapped.z = Mathf.Round(pos.z / gridSize.y) * gridSize.y;
+            }
+            else // XY
+            {
+                snapped.x = Mathf.Round(pos.x / gridSize.x) * gridSize.x;
+                snapped.y = Mathf.Round(pos.y / gridSize.y) * gridSize.y;
+            }
+
+            if (force || Vector3.Distance(pos, snapped) > snapThreshold)
+            {
+#if UNITY_EDITOR
+                // Record for undo when used from the editor
+                if (!Application.isPlaying)
+                    UnityEditor.Undo.RecordObject(transform, "Snap To Grid");
+#endif
+                transform.position = snapped;
+            }
         }
     }
 }
