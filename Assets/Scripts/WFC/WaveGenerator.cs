@@ -113,7 +113,7 @@ namespace WFC
 
         private void CollapseNearbyTiles(Tile tile, int x, int y)
         {
-            tilePrefabs - 
+            // tilePrefabs - 
         }
 
         private void PlaceTile(Tile tile, int x, int y)
