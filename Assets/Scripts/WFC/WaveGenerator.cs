@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Unity.VisualScripting;
+using UnityEditor.Rendering.Universal;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -28,7 +29,7 @@ namespace WFC
         public bool useBaseTileInSelection;
 
         [Tooltip("Legacy fallback prefab. Generator now always places a regular tile when constraints fail.")]
-        public GameObject emptyTilePrefab;
+        public Tile emptyTilePrefab;
 
         [Tooltip("World size of each tile cell. Defaults to 100x100.")]
         public Vector2 tileSize = new Vector2(100f, 100f);
@@ -49,12 +50,21 @@ namespace WFC
         public void Generate()
         {
         #if UNITY_EDITOR
+            RefreshTilePrefabs();
+            
+            SetCalculationForPossibleTiles();
             FillTilePossibilitiesArray();
             
             SetStartTile();
+
+            for(int i = 0; i < 10; i++)
+            {
+                HandleWaveFunctionCollapse();
+            }
             
         #endif
         }
+
 
         private void FillTilePossibilitiesArray()
         {
@@ -72,6 +82,14 @@ namespace WFC
                     tilePossibilities[x, y] =  new List<Tile>(tilePrefabs);
                 }
             } 
+        }
+        
+        private void SetCalculationForPossibleTiles()
+        {
+            foreach (Tile tile in tilePrefabs)
+            {
+                tile.CalculatePossibleTiles(tilePrefabs);
+            }
         }
 
         private void SetStartTile()
@@ -91,6 +109,7 @@ namespace WFC
             PlaceTile(tile, x, y);
         }
 
+        // ReSharper disable Unity.PerformanceAnalysis
         private Tile Collapse(int x, int y)
         {
             List<Tile> selectedPossibilities = tilePossibilities[x, y];
@@ -106,14 +125,80 @@ namespace WFC
             
             CollapseNearbyTiles(tile, x, y);
             
-            //This should also remove possibilities of the nearby cells 
-            
             return tile;
         }
 
         private void CollapseNearbyTiles(Tile tile, int x, int y)
         {
-            // tilePrefabs - 
+            if (y - 1 >= 0 && tilePossibilities[x, y - 1].Count > 0)
+            {
+                tilePossibilities[x, y - 1].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.North].Contains(t));
+            }
+
+            if (y + 1 < height && tilePossibilities[x, y + 1].Count > 0)
+            {
+                tilePossibilities[x, y + 1].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.South].Contains(t));
+            }
+
+            if (x - 1 >= 0 && tilePossibilities[x - 1, y].Count > 0)
+            {
+                tilePossibilities[x - 1, y].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.West].Contains(t));
+            }
+
+            if (x + 1 < width && tilePossibilities[x + 1, y].Count > 0)
+            {
+                tilePossibilities[x + 1, y].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.East].Contains(t));
+            }
+        }
+        
+        // ReSharper disable Unity.PerformanceAnalysis
+        private void HandleWaveFunctionCollapse()
+        {
+            bool hasCollapse = false;
+            
+            List<Tile> leastEntropyCell = null;
+            int leastEntropyCellX = 0, leastEntropyCellY = 0;
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    List<Tile> cell = tilePossibilities[x, y];
+
+                    int cellCount = cell.Count;
+                    if (cellCount == 0)
+                    {
+                        // PlaceTile(emptyTilePrefab, leastEntropyCellX, leastEntropyCellY);
+                        Debug.LogWarning("Cell (" + x + ", " + y + ") has no possibilities left. This should not happen with the current collapse logic. Skipping.");
+                        continue;
+                    }
+
+                    if (cellCount == 1)
+                    { 
+                        Tile tile = Collapse(x, y);
+                        PlaceTile(tile, x, y);
+                        hasCollapse = true;
+                        continue;
+                    }
+                    if(leastEntropyCell == null || cellCount < leastEntropyCell.Count)
+                    {
+                        leastEntropyCell = cell;
+                        leastEntropyCellX = x;
+                        leastEntropyCellY = y;
+                    }
+                }
+            }
+
+            if (hasCollapse)
+            {
+                HandleWaveFunctionCollapse();
+                return;
+            }
+
+            if (leastEntropyCell != null)
+            {
+                Tile tile = Collapse(leastEntropyCellX, leastEntropyCellY);
+                PlaceTile(tile, leastEntropyCellX, leastEntropyCellY);
+            }
         }
 
         private void PlaceTile(Tile tile, int x, int y)
@@ -149,7 +234,7 @@ namespace WFC
             }
         }
         
-        
+
 
         #if UNITY_EDITOR
         private void RefreshTilePrefabs()
@@ -188,5 +273,3 @@ namespace WFC
 
     }
 }
-
-

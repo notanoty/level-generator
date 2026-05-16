@@ -45,10 +45,14 @@ namespace WFC
         public bool snapInEditor = true;
 
         [Tooltip("Whether to snap the tile automatically during Play mode.")]
-        public bool snapInPlayMode = false;
+        public bool snapInPlayMode;
 
         [Tooltip("Minimum distance to grid before snapping is applied (prevents tiny adjustments).")]
         public float snapThreshold = 0.001f;
+
+        public Dictionary<Direction, List<Tile>> PossibleTilesByDirection = new Dictionary<Direction, List<Tile>>();
+
+        public Dictionary<Direction, List<Tile>> ImpossibleTilesByDirection = new Dictionary<Direction, List<Tile>>();
 
         /// <summary>
         /// Returns the connections after applying the configured rotation (rotation is in 90-degree clockwise steps).
@@ -98,6 +102,46 @@ namespace WFC
             bool byDirection = DirectionUtils.Has(thisCon, dir) && DirectionUtils.Has(otherCon, DirectionUtils.Opposite(dir));
             bool byExplicitRule = CanConnectTo(other, dir);
             return byDirection || byExplicitRule;
+        }
+
+
+        public void CalculatePossibleTiles(List<Tile> allTiles)
+        {
+            PossibleTilesByDirection.Clear();
+            ImpossibleTilesByDirection.Clear();
+
+            foreach (Direction direction in System.Enum.GetValues(typeof(Direction)))
+            {
+                PossibleTilesByDirection[direction] = new List<Tile>();
+                ImpossibleTilesByDirection[direction] = new List<Tile>();
+
+                foreach (Tile tile in allTiles)
+                {
+                    if (IsCompatibleWith(tile, direction))
+                    {
+                        PossibleTilesByDirection[direction].Add(tile);
+                    }
+                    else
+                    {
+                        ImpossibleTilesByDirection[direction].Add(tile);
+                    }
+                }
+
+                // Check connectedTiles for additional constraints
+                if (connectedTiles != null && connectedTiles.Count > 0)
+                {
+                    foreach (var connectedTile in connectedTiles)
+                    {
+                        if (connectedTile != null && connectedTile.tile != null && connectedTile.direction == direction)
+                        {
+                            if (!PossibleTilesByDirection[direction].Contains(connectedTile.tile))
+                            {
+                                PossibleTilesByDirection[direction].Add(connectedTile.tile);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         void Update()
@@ -218,4 +262,3 @@ namespace WFC
 #endif
     }
 }
-
