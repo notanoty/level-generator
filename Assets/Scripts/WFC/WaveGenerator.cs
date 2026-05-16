@@ -1,6 +1,4 @@
 ﻿using System.Collections.Generic;
-using Unity.VisualScripting;
-using UnityEditor.Rendering.Universal;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -46,31 +44,50 @@ namespace WFC
         private List<Tile> tilePrefabs = new List<Tile>();
         
         private List<Tile>[,] tilePossibilities;
+        private Tile[,] collapsedTiles;
         
         public void Generate()
         {
         #if UNITY_EDITOR
             RefreshTilePrefabs();
-            
+
+            if (width <= 0 || height <= 0)
+            {
+                Debug.LogWarning("Width and height must be greater than zero.");
+                return;
+            }
+
+            Transform container = GetOrCreateContainer();
+            if (clearContainerBeforeGenerate)
+            {
+                ClearContainer(container);
+            }
+
             SetCalculationForPossibleTiles();
             FillTilePossibilitiesArray();
+            collapsedTiles = new Tile[width, height];
             
             SetStartTile();
 
-            for(int i = 0; i < 10; i++)
+            int maxSteps = width * height;
+            for (int i = 0; i < maxSteps; i++)
             {
-                HandleWaveFunctionCollapse();
+                if (!HandleWaveFunctionCollapse())
+                {
+                    break;
+                }
             }
-            
         #endif
         }
 
 
         private void FillTilePossibilitiesArray()
         {
-            if (!useBaseTileInSelection)
+            List<Tile> selection = tilePrefabs;
+            if (!useBaseTileInSelection && baseTilePrefab != null)
             {
-                tilePrefabs.RemoveAll(t => t.gameObject == baseTilePrefab);
+                selection = new List<Tile>(tilePrefabs);
+                selection.RemoveAll(t => t == null || t.gameObject == baseTilePrefab);
             }
             
             tilePossibilities = new List<Tile>[width, height];
@@ -79,7 +96,7 @@ namespace WFC
             {
                 for (int y = 0; y < height; y++)
                 {
-                    tilePossibilities[x, y] =  new List<Tile>(tilePrefabs);
+                    tilePossibilities[x, y] =  new List<Tile>(selection);
                 }
             } 
         }
@@ -100,6 +117,8 @@ namespace WFC
             if (baseTilePrefab)
             {
                 tile = baseTilePrefab.GetComponent<Tile>();
+                tilePossibilities[x, y] = new List<Tile> { tile };
+                CollapseNearbyTiles(tile, x, y);
             }
             else
             {
@@ -115,12 +134,11 @@ namespace WFC
             List<Tile> selectedPossibilities = tilePossibilities[x, y];
             if (selectedPossibilities == null || selectedPossibilities.Count == 0)
             {
-                Debug.LogWarning("No possibilities left for cell (" + x + ", " + y + "). Placing empty tile.");
+                Debug.LogWarning("No possibilities left for cell (" + x + ", " + y + ").");
                 return null;
             }
             
-            Tile tile = Random.Range(0, selectedPossibilities.Count) is int index ? selectedPossibilities[index] : null;
-            
+            Tile tile = selectedPossibilities[Random.Range(0, selectedPossibilities.Count)];
             tilePossibilities[x, y] = new List<Tile> { tile };
             
             CollapseNearbyTiles(tile, x, y);
@@ -130,31 +148,33 @@ namespace WFC
 
         private void CollapseNearbyTiles(Tile tile, int x, int y)
         {
+            if (tile == null) return;
+
             if (y - 1 >= 0 && tilePossibilities[x, y - 1].Count > 0)
             {
-                tilePossibilities[x, y - 1].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.North].Contains(t));
+                tilePossibilities[x, y - 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.North].Contains(t));
             }
 
             if (y + 1 < height && tilePossibilities[x, y + 1].Count > 0)
             {
-                tilePossibilities[x, y + 1].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.South].Contains(t));
+                tilePossibilities[x, y + 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.South].Contains(t));
             }
 
             if (x - 1 >= 0 && tilePossibilities[x - 1, y].Count > 0)
             {
-                tilePossibilities[x - 1, y].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.West].Contains(t));
+                tilePossibilities[x - 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.West].Contains(t));
             }
 
             if (x + 1 < width && tilePossibilities[x + 1, y].Count > 0)
             {
-                tilePossibilities[x + 1, y].RemoveAll(t => !tile.ImpossibleTilesByDirection[Direction.East].Contains(t));
+                tilePossibilities[x + 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.East].Contains(t));
             }
         }
         
         // ReSharper disable Unity.PerformanceAnalysis
-        private void HandleWaveFunctionCollapse()
+        private bool HandleWaveFunctionCollapse()
         {
-            bool hasCollapse = false;
+            bool collapsedSomething = false;
             
             List<Tile> leastEntropyCell = null;
             int leastEntropyCellX = 0, leastEntropyCellY = 0;
@@ -162,21 +182,25 @@ namespace WFC
             {
                 for (int y = 0; y < height; y++)
                 {
+                    if (collapsedTiles[x, y] != null)
+                    {
+                        continue;
+                    }
+
                     List<Tile> cell = tilePossibilities[x, y];
 
                     int cellCount = cell.Count;
                     if (cellCount == 0)
                     {
-                        // PlaceTile(emptyTilePrefab, leastEntropyCellX, leastEntropyCellY);
-                        Debug.LogWarning("Cell (" + x + ", " + y + ") has no possibilities left. This should not happen with the current collapse logic. Skipping.");
+                        Debug.LogWarning("Cell (" + x + ", " + y + ") has no possibilities left. Skipping.");
                         continue;
                     }
 
                     if (cellCount == 1)
-                    { 
+                    {
                         Tile tile = Collapse(x, y);
                         PlaceTile(tile, x, y);
-                        hasCollapse = true;
+                        collapsedSomething = true;
                         continue;
                     }
                     if(leastEntropyCell == null || cellCount < leastEntropyCell.Count)
@@ -188,17 +212,19 @@ namespace WFC
                 }
             }
 
-            if (hasCollapse)
+            if (collapsedSomething)
             {
-                HandleWaveFunctionCollapse();
-                return;
+                return true;
             }
 
             if (leastEntropyCell != null)
             {
                 Tile tile = Collapse(leastEntropyCellX, leastEntropyCellY);
                 PlaceTile(tile, leastEntropyCellX, leastEntropyCellY);
+                return true;
             }
+
+            return false;
         }
 
         private void PlaceTile(Tile tile, int x, int y)
@@ -209,28 +235,26 @@ namespace WFC
                 return;
             }
 
+            if (collapsedTiles != null && collapsedTiles[x, y] != null)
+            {
+                return;
+            }
+
             Vector3 position = new Vector3(x * tileSize.x, 0f, y * tileSize.y);
-            GameObject instance = PrefabUtility.InstantiatePrefab(tile.gameObject) as GameObject;
+            GameObject instance;
+            #if UNITY_EDITOR
+            instance = PrefabUtility.InstantiatePrefab(tile.gameObject) as GameObject;
+            #else
+            instance = Instantiate(tile.gameObject);
+            #endif
             if (instance != null)
             {
                 instance.transform.position = transform.position + position;
                 instance.transform.rotation = Quaternion.identity;
 
-                if (parentContainer != null)
-                {
-                    instance.transform.SetParent(parentContainer, true);
-                }
-                else
-                {
-                    Transform container = transform.Find(containerName);
-                    if (container == null)
-                    {
-                        GameObject containerGO = new GameObject(containerName);
-                        containerGO.transform.SetParent(transform, false);
-                        container = containerGO.transform;
-                    }
-                    instance.transform.SetParent(container, true);
-                }
+                Transform container = GetOrCreateContainer();
+                instance.transform.SetParent(container, true);
+                collapsedTiles[x, y] = tile;
             }
         }
         
@@ -270,6 +294,24 @@ namespace WFC
             }
         }
         #endif
+
+        private Transform GetOrCreateContainer()
+        {
+            if (parentContainer != null)
+            {
+                return parentContainer;
+            }
+
+            Transform container = transform.Find(containerName);
+            if (container == null)
+            {
+                GameObject containerGO = new GameObject(containerName);
+                containerGO.transform.SetParent(transform, false);
+                container = containerGO.transform;
+            }
+
+            return container;
+        }
 
     }
 }

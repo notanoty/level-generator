@@ -14,7 +14,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: a1876d61ff29e9642b67f52bfc39cbbe, type: 2}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -177.43095
+      value: 422.56906
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.y
@@ -22,7 +22,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1495.9874
+      value: 304.0125
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalRotation.w
@@ -60,6 +60,50 @@ PrefabInstance:
       propertyPath: connections
       value: 12
       objectReference: {fileID: 0}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.size
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[0].tile
+      value: 
+      objectReference: {fileID: 5267395722215586440, guid: 4520f89b51e08a14a9b3dd138d2d81bf, type: 3}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[1].tile
+      value: 
+      objectReference: {fileID: 7783683951245010261, guid: 64356923021eb6e4db1b1f083aad9cb0, type: 3}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[2].tile
+      value: 
+      objectReference: {fileID: 5491712419854568186}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[3].tile
+      value: 
+      objectReference: {fileID: 1254801665917143426, guid: b281a61180a0e70418034350e33e2a79, type: 3}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[4].tile
+      value: 
+      objectReference: {fileID: 1254801665917143426, guid: b281a61180a0e70418034350e33e2a79, type: 3}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[0].direction
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[1].direction
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[2].direction
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[3].direction
+      value: -1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connectedTiles.Array.data[4].direction
+      value: -1
+      objectReference: {fileID: 0}
     - target: {fileID: 9010719439865631840, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_Name
       value: TIleRoad3
@@ -73,3 +117,14 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+--- !u!114 &5491712419854568186 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+  m_PrefabInstance: {fileID: 6728639164441651569}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69ec8c0a3a4345a9977ad914ece0f4e5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WFC.Tile
