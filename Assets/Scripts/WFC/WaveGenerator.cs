@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -24,6 +25,8 @@ namespace WFC
         [Tooltip("Prefab to place as the starting tile (baseTile). If null the generator will pick one from the folder.")]
         public GameObject baseTilePrefab;
 
+        public bool useBaseTileInSelection;
+
         [Tooltip("Legacy fallback prefab. Generator now always places a regular tile when constraints fail.")]
         public GameObject emptyTilePrefab;
 
@@ -39,172 +42,116 @@ namespace WFC
         [Tooltip("If true, clear any previously generated tiles in the container before generating.")]
         public bool clearContainerBeforeGenerate = true;
 
-        // Internal
-        private List<GameObject> tilePrefabs = new List<GameObject>();
-
-        /// <summary>
-        /// Call this from the editor (or via inspector) to generate the level.
-        /// This method will search the project folder defined by <see cref="tilesFolder"/> for prefabs that contain a Tile component.
-        /// </summary>
+        private List<Tile> tilePrefabs = new List<Tile>();
+        
+        private List<Tile>[,] tilePossibilities;
+        
         public void Generate()
         {
-#if UNITY_EDITOR
-            RefreshTilePrefabs();
-
-            if (tilePrefabs.Count == 0)
-            {
-                Debug.LogWarning("No tile prefabs found in folder: " + tilesFolder);
-                return;
-            }
-
-            if (width <= 0 || height <= 0)
-            {
-                Debug.LogWarning("Width and Height must be > 0");
-                return;
-            }
-
-            Transform container = null;
-            if (parentContainer != null && parentContainer.IsChildOf(transform))
-            {
-                container = parentContainer;
-            }
-            else if (parentContainer != null)
-            {
-                Debug.LogWarning("WaveGenerator parentContainer must be a child of the generator. Falling back to local container.", this);
-            }
-
-            if (container == null)
-            {
-                // find or create container child
-                var existing = transform.Find(containerName);
-                if (existing != null) container = existing;
-                else
-                {
-                    var go = new GameObject(containerName);
-                    Undo.RegisterCreatedObjectUndo(go, "Create WFC Container");
-                    go.transform.SetParent(transform);
-                    go.transform.localPosition = Vector3.zero;
-                    container = go.transform;
-                }
-            }
-
-            if (clearContainerBeforeGenerate)
-            {
-                ClearContainer(container);
-            }
-
-            // Grid is centered in local space under the container/generator
-            float halfWidth = (width - 1) * 0.5f * tileSize.x;
-            float halfHeight = (height - 1) * 0.5f * tileSize.y;
-
-            // Prepare 2D array to store placed tiles
-            GameObject[,] placed = new GameObject[width, height];
-
-            // Determine base tile position (center)
-            int baseX = width / 2;
-            int baseY = height / 2;
-
-            // Ensure base tile prefab
-            if (baseTilePrefab == null)
-            {
-                baseTilePrefab = tilePrefabs[Random.Range(0, tilePrefabs.Count)];
-            }
-
-            // Place tiles row by row (y then x)
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    Vector3 localPos = new Vector3(x * tileSize.x - halfWidth, 0f, y * tileSize.y - halfHeight);
-
-                    GameObject prefabToInstantiate = null;
-
-                    // Determine prefab for this cell. The base cell prefers baseTilePrefab but falls back to any valid tile.
-                    if (x == baseX && y == baseY)
-                    {
-                        bool placedBase = false;
-                        if (baseTilePrefab != null)
-                        {
-                            prefabToInstantiate = baseTilePrefab;
-                            placedBase = true;
-                        }
-
-                        if (!placedBase)
-                        {
-                            // fallback to any tile from the tiles list
-                            prefabToInstantiate = tilePrefabs[Random.Range(0, tilePrefabs.Count)];
-                        }
-                    }
-                    else
-                    {
-                        // Build candidate list based on neighbors already placed (left and down)
-                        List<GameObject> candidates = new List<GameObject>(tilePrefabs);
-
-                        // Filter by left neighbor
-                        if (x - 1 >= 0 && placed[x - 1, y] != null)
-                        {
-                            var leftTile = placed[x - 1, y].GetComponent<Tile>();
-                            candidates = FilterByNeighbor(candidates, leftTile, Direction.East);
-                        }
-
-                        // Filter by bottom neighbor (y-1). Here we treat increasing y as north; bottom is south
-                        if (y - 1 >= 0 && placed[x, y - 1] != null)
-                        {
-                            var bottomTile = placed[x, y - 1].GetComponent<Tile>();
-                            candidates = FilterByNeighbor(candidates, bottomTile, Direction.North);
-                        }
-
-
-                        if (candidates.Count == 0)
-                        {
-                            // No matching tile found - fall back to any available tile so no cells stay empty.
-                            prefabToInstantiate = tilePrefabs[Random.Range(0, tilePrefabs.Count)];
-                        }
-                        else
-                        {
-                            prefabToInstantiate = candidates[Random.Range(0, candidates.Count)];
-                        }
-                    }
-
-                    // Safety fallback: always place a regular tile.
-                    if (prefabToInstantiate == null)
-                    {
-                        prefabToInstantiate = tilePrefabs[Random.Range(0, tilePrefabs.Count)];
-                    }
-
-                    GameObject instance = null;
-                    var prefabInstance = PrefabUtility.InstantiatePrefab(prefabToInstantiate);
-                    if (prefabInstance != null) instance = prefabInstance as GameObject;
-                    if (instance == null)
-                    {
-                        // fallback to direct instantiate
-                        instance = Instantiate(prefabToInstantiate);
-                    }
-
-                    Undo.RegisterCreatedObjectUndo(instance, "WFC Instantiate Tile");
-
-                    if (container != null)
-                        instance.transform.SetParent(container, false);
-                    instance.transform.localPosition = localPos;
-                    instance.transform.localRotation = Quaternion.identity;
-
-                    // If the prefab has a Tile component, ensure its rotation field matches 0
-                    var tileComp = instance.GetComponent<Tile>();
-                    if (tileComp != null)
-                    {
-                        // do nothing for now; user controls rotation in prefab
-                    }
-
-                    placed[x, y] = instance;
-                }
-            }
-
-            // Select container in editor for easy inspection
-            Selection.activeObject = container.gameObject;
-#endif
+        #if UNITY_EDITOR
+            FillTilePossibilitiesArray();
+            
+            SetStartTile();
+            
+        #endif
         }
 
-#if UNITY_EDITOR
+        private void FillTilePossibilitiesArray()
+        {
+            if (!useBaseTileInSelection)
+            {
+                tilePrefabs.RemoveAll(t => t.gameObject == baseTilePrefab);
+            }
+            
+            tilePossibilities = new List<Tile>[width, height];
+
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    tilePossibilities[x, y] =  new List<Tile>(tilePrefabs);
+                }
+            } 
+        }
+
+        private void SetStartTile()
+        {
+            int y = Random.Range(0, height);
+            int x = Random.Range(0, width);
+            Tile tile;
+            if (baseTilePrefab)
+            {
+                tile = baseTilePrefab.GetComponent<Tile>();
+            }
+            else
+            {
+                tile = Collapse(x, y);
+            }
+
+            PlaceTile(tile, x, y);
+        }
+
+        private Tile Collapse(int x, int y)
+        {
+            List<Tile> selectedPossibilities = tilePossibilities[x, y];
+            if (selectedPossibilities == null || selectedPossibilities.Count == 0)
+            {
+                Debug.LogWarning("No possibilities left for cell (" + x + ", " + y + "). Placing empty tile.");
+                return null;
+            }
+            
+            Tile tile = Random.Range(0, selectedPossibilities.Count) is int index ? selectedPossibilities[index] : null;
+            
+            tilePossibilities[x, y] = new List<Tile> { tile };
+            
+            CollapseNearbyTiles(tile, x, y);
+            
+            //This should also remove possibilities of the nearby cells 
+            
+            return tile;
+        }
+
+        private void CollapseNearbyTiles(Tile tile, int x, int y)
+        {
+            tilePrefabs - 
+        }
+
+        private void PlaceTile(Tile tile, int x, int y)
+        {
+            if (tile == null)
+            {
+                Debug.LogWarning("Trying to place a null tile at (" + x + ", " + y + "). Skipping.");
+                return;
+            }
+
+            Vector3 position = new Vector3(x * tileSize.x, 0f, y * tileSize.y);
+            GameObject instance = PrefabUtility.InstantiatePrefab(tile.gameObject) as GameObject;
+            if (instance != null)
+            {
+                instance.transform.position = transform.position + position;
+                instance.transform.rotation = Quaternion.identity;
+
+                if (parentContainer != null)
+                {
+                    instance.transform.SetParent(parentContainer, true);
+                }
+                else
+                {
+                    Transform container = transform.Find(containerName);
+                    if (container == null)
+                    {
+                        GameObject containerGO = new GameObject(containerName);
+                        containerGO.transform.SetParent(transform, false);
+                        container = containerGO.transform;
+                    }
+                    instance.transform.SetParent(container, true);
+                }
+            }
+        }
+        
+        
+
+        #if UNITY_EDITOR
         private void RefreshTilePrefabs()
         {
             tilePrefabs.Clear();
@@ -224,42 +171,20 @@ namespace WFC
                 var go = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 if (go == null) continue;
                 if (go.GetComponent<Tile>() == null) continue;
-                tilePrefabs.Add(go);
+                tilePrefabs.Add(go.GetComponent<Tile>());
             }
-        }
-
-        private List<GameObject> FilterByNeighbor(List<GameObject> candidates, Tile neighbor, Direction requiredDirectionFromNeighbor)
-        {
-            if (neighbor == null) return candidates;
-            List<GameObject> res = new List<GameObject>();
-            foreach (var prefab in candidates)
-            {
-                if (prefab == null) continue;
-                var tile = prefab.GetComponent<Tile>();
-                if (tile == null) continue;
-
-                // neighbor must be compatible with tile in requiredDirectionFromNeighbor
-                // e.g. if neighbor is left, requiredDirectionFromNeighbor == East (neighbor's east must connect to candidate)
-                bool a = neighbor.IsCompatibleWith(tile, requiredDirectionFromNeighbor);
-                bool b = tile.IsCompatibleWith(neighbor, DirectionUtils.Opposite(requiredDirectionFromNeighbor));
-
-                // Less strict rule: allow if either side declares the connection valid.
-                if (a || b) res.Add(prefab);
-            }
-            return res;
         }
 
         private void ClearContainer(Transform container)
         {
             if (container == null) return;
-            // Destroy children with Undo support
             for (int i = container.childCount - 1; i >= 0; i--)
             {
                 var child = container.GetChild(i).gameObject;
                 Undo.DestroyObjectImmediate(child);
             }
         }
-#endif
+        #endif
 
     }
 }

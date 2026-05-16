@@ -21,10 +21,8 @@ public class WaveGeneratorEditor : Editor
         {
             if (gen.transform.Find(gen.containerName) is Transform container)
             {
-                // Use internal clear method via serialized object - call private method via reflection or just destroy children
                 if (container != null)
                 {
-                    // Ask for confirmation
                     if (EditorUtility.DisplayDialog("Clear Generated", "Are you sure you want to remove all generated tiles under '" + gen.containerName + "'?", "Yes", "No"))
                     {
                         Undo.RegisterCompleteObjectUndo(container.gameObject, "Clear Generated");
@@ -44,7 +42,6 @@ public class WaveGeneratorEditor : Editor
 
         if (GUILayout.Button("Refresh Prefabs (folder)"))
         {
-            // We call RefreshTilePrefabs via reflection since it's editor-only private method
             var method = typeof(WaveGenerator).GetMethod("RefreshTilePrefabs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             method?.Invoke(gen, null);
             EditorUtility.SetDirty(gen);
