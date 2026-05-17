@@ -126,9 +126,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69ec8c0a3a4345a9977ad914ece0f4e5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WFC.Tile
-  texture: {fileID: 0}
-  connections: 0
+  connections: -1
   rotation: 0
+  allowRotationVariants: 1
+  allowedRotationSteps: 
   connectedTiles: []
   gridSize: {x: 100, y: 100}
   snapPlane: 1

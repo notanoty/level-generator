@@ -431,7 +431,7 @@ namespace Editor.WFC
             generated.mainTexture = texture;
 
             AssetDatabase.CreateAsset(generated, materialPath);
-            return AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            return generated;
         }
 
         private static string SanitizeAssetName(string value)

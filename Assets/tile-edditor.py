@@ -17,6 +17,7 @@ RGBA = Tuple[int, int, int, int]
 
 BACKGROUND: RGBA = (128, 128, 128, 255)
 PAINT: RGBA = (0, 170, 255, 255)
+DIRECTION_OPTIONS = ("North", "East", "South", "West")
 
 DEFAULT_WIDTH = 64
 DEFAULT_HEIGHT = 64
@@ -124,13 +125,17 @@ class TileModel:
 				flat.append(self.paint_color if self.cells[y][x] else self.background_color)
 		return flat
 
-	def to_json(self) -> dict:
+	def cells_as_strings(self) -> List[str]:
+		return ["".join("1" if painted else "0" for painted in row) for row in self.cells]
+
+	def to_json(self, connections: Sequence[str]) -> dict:
+		normalized_connections = [direction for direction in connections if direction in DIRECTION_OPTIONS]
 		return {
 			"width": self.width,
 			"height": self.height,
 			"background_color": list(self.background_color),
 			"paint_color": list(self.paint_color),
-			"cells": ["".join("1" if cell else "0" for cell in row) for row in self.cells],
+			"cells": self.cells_as_strings(),
 			"mock_prefab": {
 				"prefab_name": "TilePrefab_TestVariant",
 				"unity_prefab_path": "Assets/Prefabs/Tiles/TilePrefab_TestVariant.prefab",
@@ -143,7 +148,7 @@ class TileModel:
 				},
 				"tile_component": {
 					"texture": "tile.png",
-					"connections": ["North", "East", "South", "West"],
+					"connections": normalized_connections,
 					"rotation": 0,
 					"allow_rotation_variants": True,
 					"allowed_rotation_steps": [0, 1, 2, 3],
@@ -153,11 +158,11 @@ class TileModel:
 			},
 		}
 
-	def save(self, tile_name: str, output_root: Path) -> Path:
+	def save(self, tile_name: str, output_root: Path, connections: Sequence[str]) -> Path:
 		folder = unique_folder(output_root, tile_name)
 		folder.mkdir(parents=True, exist_ok=False)
 
-		(folder / "tile.json").write_text(json.dumps(self.to_json(), indent=2), encoding="utf-8")
+		(folder / "tile.json").write_text(json.dumps(self.to_json(connections), indent=2), encoding="utf-8")
 		write_png(folder / "tile.png", self.width, self.height, self.pixels())
 		return folder
 
@@ -172,13 +177,16 @@ class TilePaintApp:
 		self.model = TileModel()
 		self.cell_size = DEFAULT_CELL_SIZE
 		self.drag_paint_state: bool | None = None
+		self.direction_vars = {direction: tk.BooleanVar(value=True) for direction in DIRECTION_OPTIONS}
+		self.direction_summary_var = tk.StringVar()
 
 		self.tile_name_var = tk.StringVar(value="Tile01")
 		self.width_var = tk.IntVar(value=self.model.width)
 		self.height_var = tk.IntVar(value=self.model.height)
-		self.status_var = tk.StringVar(value="Left click to paint. Right click to erase.")
+		self.status_var = tk.StringVar(value="Left click to paint. Right click to erase. Use the sidebar to pick connection directions.")
 
 		self._build_ui()
+		self._refresh_direction_summary()
 		self._fit_cell_size_to_screen()
 		self._refresh_canvas_size()
 		self.redraw_all()
@@ -200,7 +208,36 @@ class TilePaintApp:
 		container = ttk.Frame(self.root, padding=8)
 		container.pack(fill="both", expand=True)
 
-		controls = ttk.Frame(container)
+		content = ttk.Frame(container)
+		content.pack(fill="both", expand=True)
+
+		sidebar = ttk.Frame(content)
+		sidebar.pack(side="left", fill="y", padx=(0, 10))
+
+		connections_box = ttk.Labelframe(sidebar, text="Directions", padding=8)
+		connections_box.pack(fill="x", pady=(0, 10))
+
+		for direction in DIRECTION_OPTIONS:
+			ttkk = ttk.Checkbutton(
+				connections_box,
+				text=direction,
+				variable=self.direction_vars[direction],
+				command=self._refresh_direction_summary,
+			)
+			ttkk.pack(anchor="w", pady=1)
+
+		button_row = ttk.Frame(connections_box)
+		button_row.pack(fill="x", pady=(8, 4))
+		ttk.Button(button_row, text="All", command=self.select_all_directions).pack(side="left", expand=True, fill="x")
+		ttk.Button(button_row, text="None", command=self.clear_all_directions).pack(side="left", expand=True, fill="x", padx=(6, 0))
+
+		ttk.Label(connections_box, text="Selected:").pack(anchor="w", pady=(6, 0))
+		ttk.Label(connections_box, textvariable=self.direction_summary_var, wraplength=150, justify="left").pack(anchor="w")
+
+		main = ttk.Frame(content)
+		main.pack(side="left", fill="both", expand=True)
+
+		controls = ttk.Frame(main)
 		controls.pack(fill="x", pady=(0, 8))
 
 		ttk.Label(controls, text="Tile name:").grid(row=0, column=0, sticky="w")
@@ -216,7 +253,7 @@ class TilePaintApp:
 		ttk.Button(controls, text="Clear", command=self.clear_tile).grid(row=0, column=7, padx=(0, 8))
 		ttk.Button(controls, text="Save", command=self.save_tile).grid(row=0, column=8)
 
-		self.canvas = tk.Canvas(container, highlightthickness=1, highlightbackground="#555555", bg=rgba_to_hex(BACKGROUND))
+		self.canvas = tk.Canvas(main, highlightthickness=1, highlightbackground="#555555", bg=rgba_to_hex(BACKGROUND))
 		self.canvas.pack(fill="both", expand=True)
 		self.canvas.bind("<Button-1>", lambda event: self._paint_from_event(event, True))
 		self.canvas.bind("<B1-Motion>", lambda event: self._paint_from_event(event, True))
@@ -227,6 +264,23 @@ class TilePaintApp:
 		footer.pack(fill="x", pady=(8, 0))
 		ttk.Label(footer, textvariable=self.status_var).pack(side="left")
 		ttk.Label(footer, text=f"Paint color: {rgba_to_hex(PAINT)}").pack(side="right")
+
+	def _refresh_direction_summary(self) -> None:
+		selected = self.selected_directions()
+		self.direction_summary_var.set(", ".join(selected) if selected else "None")
+
+	def selected_directions(self) -> List[str]:
+		return [direction for direction in DIRECTION_OPTIONS if self.direction_vars[direction].get()]
+
+	def select_all_directions(self) -> None:
+		for var in self.direction_vars.values():
+			var.set(True)
+		self._refresh_direction_summary()
+
+	def clear_all_directions(self) -> None:
+		for var in self.direction_vars.values():
+			var.set(False)
+		self._refresh_direction_summary()
 
 	def _refresh_canvas_size(self) -> None:
 		self.canvas.configure(width=self.model.width * self.cell_size, height=self.model.height * self.cell_size)
@@ -287,7 +341,7 @@ class TilePaintApp:
 			return
 
 		try:
-			saved_folder = self.model.save(tile_name, self.output_root)
+			saved_folder = self.model.save(tile_name, self.output_root, self.selected_directions())
 		except Exception as exc:  # pragma: no cover - surfaced to UI
 			messagebox.showerror("Save Tile", f"Could not save tile:\n{exc}")
 			return
@@ -304,8 +358,8 @@ def run_self_test() -> None:
 		model.set_cell(2, 1, True)
 		model.set_cell(1, 2, True)
 
-		first = model.save("Example Tile", root)
-		second = model.save("Example Tile", root)
+		first = model.save("Example Tile", root, DIRECTION_OPTIONS)
+		second = model.save("Example Tile", root, ["North", "South"])
 
 		assert first.exists()
 		assert (first / "tile.json").exists()
@@ -319,6 +373,7 @@ def run_self_test() -> None:
 		payload = json.loads((first / "tile.json").read_text(encoding="utf-8"))
 		assert payload["width"] == 4 and payload["height"] == 4
 		assert payload["cells"][1][1] == "1"
+		assert payload["mock_prefab"]["tile_component"]["connections"] == ["North", "East", "South", "West"]
 
 	print("Self-test passed.")
 
