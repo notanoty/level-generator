@@ -17,6 +17,9 @@ RGBA = Tuple[int, int, int, int]
 
 DEFAULT_PALETTE_PATH = Path(__file__).resolve().parent / "tile-palette.json"
 DIRECTION_OPTIONS = ("North", "East", "South", "West")
+PATHWAY_COLOR_ID = "pathway"
+CONNECTION_SLOT_COUNT = 10
+CONNECTION_MARKER_RGBA: RGBA = (255, 0, 0, 255)
 BRUSH_SHAPES = ("Square", "Circle")
 TOOL_BRUSH = "Brush"
 TOOL_FILL = "Fill"
@@ -100,6 +103,46 @@ class TilePalette:
 		return color_id in self._by_id
 
 
+def slot_indices_along_axis(length: int, count: int) -> List[int]:
+	if length <= 0:
+		return []
+	if length <= count:
+		return list(range(length))
+	start = (length - count) // 2
+	return list(range(start, start + count))
+
+
+def connection_cells_for_direction(width: int, height: int, direction: str) -> List[Tuple[int, int]]:
+	width = max(1, int(width))
+	height = max(1, int(height))
+	if direction == "North":
+		y = 0
+		return [(x, y) for x in slot_indices_along_axis(width, CONNECTION_SLOT_COUNT)]
+	if direction == "South":
+		y = height - 1
+		return [(x, y) for x in slot_indices_along_axis(width, CONNECTION_SLOT_COUNT)]
+	if direction == "West":
+		x = 0
+		return [(x, y) for y in slot_indices_along_axis(height, CONNECTION_SLOT_COUNT)]
+	if direction == "East":
+		x = width - 1
+		return [(x, y) for y in slot_indices_along_axis(height, CONNECTION_SLOT_COUNT)]
+	return []
+
+
+def connection_slot_positions(width: int, height: int, directions: Sequence[str]) -> List[Tuple[int, int]]:
+	seen: set[Tuple[int, int]] = set()
+	positions: List[Tuple[int, int]] = []
+	for direction in directions:
+		if direction not in DIRECTION_OPTIONS:
+			continue
+		for pos in connection_cells_for_direction(width, height, direction):
+			if pos not in seen:
+				seen.add(pos)
+				positions.append(pos)
+	return positions
+
+
 def sanitize_name(name: str) -> str:
 	cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", name.strip())
 	cleaned = cleaned.strip("._-")
@@ -118,6 +161,19 @@ def unique_folder(base: Path, tile_name: str) -> Path:
 		if not candidate.exists():
 			return candidate
 		suffix += 1
+
+
+def rotate_pixels_180(width: int, height: int, pixels: Sequence[RGBA]) -> List[RGBA]:
+	if len(pixels) != width * height:
+		raise ValueError("Pixel buffer size does not match image dimensions.")
+
+	rotated: List[RGBA] = [pixels[0]] * (width * height)
+	for y in range(height):
+		for x in range(width):
+			src_x = width - 1 - x
+			src_y = height - 1 - y
+			rotated[y * width + x] = pixels[src_y * width + src_x]
+	return rotated
 
 
 def write_png(path: Path, width: int, height: int, pixels: Sequence[RGBA]) -> None:
@@ -250,6 +306,16 @@ class TileModel:
 
 		return changed
 
+	def connection_slots(self, connections: Sequence[str]) -> List[Tuple[int, int]]:
+		return connection_slot_positions(self.width, self.height, connections)
+
+	def unpainted_connection_slots(self, connections: Sequence[str]) -> List[Tuple[int, int]]:
+		missing: List[Tuple[int, int]] = []
+		for x, y in self.connection_slots(connections):
+			if self.cell_color_id(x, y) != PATHWAY_COLOR_ID:
+				missing.append((x, y))
+		return missing
+
 	def pixels(self) -> List[RGBA]:
 		flat: List[RGBA] = []
 		for y in range(self.height):
@@ -293,11 +359,21 @@ class TileModel:
 		}
 
 	def save(self, tile_name: str, output_root: Path, connections: Sequence[str]) -> Path:
+		missing = self.unpainted_connection_slots(connections)
+		if missing:
+			sample = ", ".join(f"({x}, {y})" for x, y in missing[:6])
+			extra = f" and {len(missing) - 6} more" if len(missing) > 6 else ""
+			raise ValueError(
+				"Paint every red connection marker with pathway before saving. "
+				f"Unpainted slots: {sample}{extra}."
+			)
+
 		folder = unique_folder(output_root, tile_name)
 		folder.mkdir(parents=True, exist_ok=False)
 
 		(folder / "tile.json").write_text(json.dumps(self.to_json(connections), indent=2), encoding="utf-8")
-		write_png(folder / "tile.png", self.width, self.height, self.pixels())
+		export_pixels = rotate_pixels_180(self.width, self.height, self.pixels())
+		write_png(folder / "tile.png", self.width, self.height, export_pixels)
 		return folder
 
 
@@ -391,7 +467,7 @@ class TilePaintApp:
 				connections_box,
 				text=direction,
 				variable=self.direction_vars[direction],
-				command=self._refresh_direction_summary,
+				command=self._on_direction_changed,
 			)
 			ttkk.pack(anchor="w", pady=1)
 
@@ -402,6 +478,15 @@ class TilePaintApp:
 
 		ttk.Label(connections_box, text="Selected:").pack(anchor="w", pady=(6, 0))
 		ttk.Label(connections_box, textvariable=self.direction_summary_var, wraplength=150, justify="left").pack(anchor="w")
+		ttk.Label(
+			connections_box,
+			text=(
+				f"Each selected side shows {CONNECTION_SLOT_COUNT} red border guides. "
+				"Paint them with pathway before saving."
+			),
+			wraplength=150,
+			justify="left",
+		).pack(anchor="w", pady=(4, 0))
 
 		brush_box = ttk.Labelframe(sidebar, text="Brush", padding=8)
 		brush_box.pack(fill="x", pady=(0, 10))
@@ -494,18 +579,25 @@ class TilePaintApp:
 		selected = self.selected_directions()
 		self.direction_summary_var.set(", ".join(selected) if selected else "None")
 
+	def _on_direction_changed(self) -> None:
+		self._refresh_direction_summary()
+		self.redraw_all()
+
+	def _connection_slot_set(self) -> set[Tuple[int, int]]:
+		return set(self.model.connection_slots(self.selected_directions()))
+
 	def selected_directions(self) -> List[str]:
 		return [direction for direction in DIRECTION_OPTIONS if self.direction_vars[direction].get()]
 
 	def select_all_directions(self) -> None:
 		for var in self.direction_vars.values():
 			var.set(True)
-		self._refresh_direction_summary()
+		self._on_direction_changed()
 
 	def clear_all_directions(self) -> None:
 		for var in self.direction_vars.values():
 			var.set(False)
-		self._refresh_direction_summary()
+		self._on_direction_changed()
 
 	def _refresh_canvas_size(self) -> None:
 		self.canvas.configure(width=self.model.width * self.cell_size, height=self.model.height * self.cell_size)
@@ -557,7 +649,12 @@ class TilePaintApp:
 		y0 = y * self.cell_size
 		x1 = x0 + self.cell_size
 		y1 = y0 + self.cell_size
-		fill = rgba_to_hex(self.model.palette.rgba(self.model.cell_color_id(x, y)))
+		color_id = self.model.cell_color_id(x, y)
+		is_connection_slot = (x, y) in self._connection_slot_set()
+		if is_connection_slot and color_id != PATHWAY_COLOR_ID:
+			fill = rgba_to_hex(CONNECTION_MARKER_RGBA)
+		else:
+			fill = rgba_to_hex(self.model.palette.rgba(color_id))
 		tag = f"cell_{x}_{y}"
 		self.canvas.delete(tag)
 		self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=DARK_BORDER, tags=tag)
@@ -586,12 +683,14 @@ class TilePaintApp:
 			messagebox.showerror("Save Tile", "Please enter a tile name.")
 			return
 
+		connections = self.selected_directions()
 		try:
-			saved_folder = self.model.save(tile_name, self.output_root, self.selected_directions())
+			saved_folder = self.model.save(tile_name, self.output_root, connections)
 		except Exception as exc:  # pragma: no cover - surfaced to UI
 			messagebox.showerror("Save Tile", f"Could not save tile:\n{exc}")
 			return
 
+		self.redraw_all()
 		self.status_var.set(f"Saved to {saved_folder}")
 		messagebox.showinfo("Save Tile", f"Saved tile data to:\n{saved_folder}")
 
@@ -616,6 +715,9 @@ def run_self_test() -> None:
 		assert model.cell_color_id(0, 0) == grass_id
 		assert model.cell_color_id(1, 0) == grass_id
 
+		for x, y in connection_slot_positions(4, 4, DIRECTION_OPTIONS):
+			model.set_cell(x, y, pathway_id)
+
 		first = model.save("Example Tile", root, DIRECTION_OPTIONS)
 		second = model.save("Example Tile", root, ["North", "South"])
 
@@ -633,6 +735,35 @@ def run_self_test() -> None:
 		assert payload["default_color"] == palette.default_id
 		assert payload["cells"][0][0] == grass_id
 		assert payload["mock_prefab"]["tile_component"]["connections"] == ["North", "East", "South", "West"]
+
+		north_slots = connection_cells_for_direction(4, 4, "North")
+		assert len(north_slots) == 4
+		assert all(y == 0 for _, y in north_slots)
+
+		wide = TileModel(palette, width=20, height=8)
+		east_slots = connection_cells_for_direction(20, 8, "East")
+		assert len(east_slots) == CONNECTION_SLOT_COUNT
+		assert all(x == 19 for x, _ in east_slots)
+
+		wide.set_cell(0, 0, grass_id)
+		for x, y in connection_slot_positions(20, 8, ["North"]):
+			wide.set_cell(x, y, pathway_id)
+		wide.save("ConnectionSlots", root, ["North"])
+		conn_payload = json.loads((root / "ConnectionSlots" / "tile.json").read_text(encoding="utf-8"))
+		for x, _ in connection_cells_for_direction(20, 8, "North"):
+			assert conn_payload["cells"][0][x] == pathway_id
+
+		model.clear()
+		model.set_cell(0, 0, pathway_id)
+		rotated = rotate_pixels_180(model.width, model.height, model.pixels())
+		assert rotated[-1] == palette.rgba(pathway_id)
+
+		try:
+			empty = TileModel(palette, width=4, height=4)
+			empty.save("MissingPathway", root, ["North"])
+			raise AssertionError("Expected save to fail when connection slots are not pathway.")
+		except ValueError:
+			pass
 
 	print("Self-test passed.")
 
