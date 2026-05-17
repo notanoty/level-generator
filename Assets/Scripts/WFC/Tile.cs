@@ -20,15 +20,19 @@ namespace WFC
     [ExecuteAlways]
     public class Tile : MonoBehaviour
     {
-        [Tooltip("Texture2D used to represent this tile in the editor and at runtime.")]
-        public Texture2D texture;
-
         [Tooltip("Directional connections for this tile. Use the flags to pick multiple directions.")]
         public Direction connections;
 
         [Tooltip("Optional rotation (in 90-degree steps). This rotation is applied to the connection mask when querying.")]
         [Range(0, 3)]
         public int rotation;
+
+        [Header("Rotation Variants")]
+        [Tooltip("If true, the generator can use rotated variants of this tile.")]
+        public bool allowRotationVariants = true;
+
+        [Tooltip("Allowed rotation steps (0-3) added on top of the base rotation. If empty, defaults to 0,1,2,3 when rotation variants are enabled.")]
+        public List<int> allowedRotationSteps = new List<int>();
 
         [Tooltip("Tiles that this tile is allowed to connect to, including the direction where each connection is allowed. Leave empty to allow any tile that matches the directions.")]
         public List<ConnectedTile> connectedTiles;
@@ -59,7 +63,15 @@ namespace WFC
         /// </summary>
         public Direction GetRotatedConnections()
         {
-            return DirectionUtils.Rotate(connections, rotation);
+            return GetConnectionsForRotation(rotation);
+        }
+
+        /// <summary>
+        /// Returns the connections after applying the given rotation (rotation is in 90-degree clockwise steps).
+        /// </summary>
+        public Direction GetConnectionsForRotation(int rotationSteps)
+        {
+            return DirectionUtils.Rotate(connections, rotationSteps);
         }
 
         /// <summary>

@@ -3,7 +3,7 @@ using UnityEngine;
 using WFC;
 
 [CustomEditor(typeof(WaveGenerator))]
-public class WaveGeneratorEditor : Editor
+public class WaveGeneratorEditor : UnityEditor.Editor
 {
     public override void OnInspectorGUI()
     {

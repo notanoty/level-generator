@@ -42,14 +42,22 @@ namespace WFC
         public bool clearContainerBeforeGenerate = true;
 
         private List<Tile> tilePrefabs = new List<Tile>();
+        private List<TileVariant> tileVariants = new List<TileVariant>();
         
-        private List<Tile>[,] tilePossibilities;
-        private Tile[,] collapsedTiles;
+        private List<TileVariant>[,] tilePossibilities;
+        private TileVariant[,] collapsedTiles;
         
         public void Generate()
         {
         #if UNITY_EDITOR
             RefreshTilePrefabs();
+            BuildTileVariants();
+
+            if (tileVariants.Count == 0)
+            {
+                Debug.LogWarning("No tile variants found. Check your tile prefabs and rotation settings.");
+                return;
+            }
 
             if (width <= 0 || height <= 0)
             {
@@ -65,7 +73,7 @@ namespace WFC
 
             SetCalculationForPossibleTiles();
             FillTilePossibilitiesArray();
-            collapsedTiles = new Tile[width, height];
+            collapsedTiles = new TileVariant[width, height];
             
             SetStartTile();
 
@@ -83,29 +91,48 @@ namespace WFC
 
         private void FillTilePossibilitiesArray()
         {
-            List<Tile> selection = tilePrefabs;
+            List<TileVariant> selection = tileVariants;
             if (!useBaseTileInSelection && baseTilePrefab != null)
             {
-                selection = new List<Tile>(tilePrefabs);
-                selection.RemoveAll(t => t == null || t.gameObject == baseTilePrefab);
+                selection = new List<TileVariant>(tileVariants);
+                selection.RemoveAll(t => t == null || t.Tile == null || t.Tile.gameObject == baseTilePrefab);
             }
             
-            tilePossibilities = new List<Tile>[width, height];
+            tilePossibilities = new List<TileVariant>[width, height];
 
             for (int x = 0; x < width; x++)
             {
                 for (int y = 0; y < height; y++)
                 {
-                    tilePossibilities[x, y] =  new List<Tile>(selection);
+                    tilePossibilities[x, y] =  new List<TileVariant>(selection);
                 }
             } 
         }
         
         private void SetCalculationForPossibleTiles()
         {
-            foreach (Tile tile in tilePrefabs)
+            foreach (TileVariant variant in tileVariants)
             {
-                tile.CalculatePossibleTiles(tilePrefabs);
+                variant.PossibleByDirection.Clear();
+                variant.ImpossibleByDirection.Clear();
+
+                foreach (Direction direction in CardinalDirections)
+                {
+                    variant.PossibleByDirection[direction] = new List<TileVariant>();
+                    variant.ImpossibleByDirection[direction] = new List<TileVariant>();
+
+                    foreach (TileVariant other in tileVariants)
+                    {
+                        if (IsCompatibleWith(variant, other, direction))
+                        {
+                            variant.PossibleByDirection[direction].Add(other);
+                        }
+                        else
+                        {
+                            variant.ImpossibleByDirection[direction].Add(other);
+                        }
+                    }
+                }
             }
         }
 
@@ -113,61 +140,70 @@ namespace WFC
         {
             int y = Random.Range(0, height);
             int x = Random.Range(0, width);
-            Tile tile;
+            TileVariant variant;
             if (baseTilePrefab)
             {
-                tile = baseTilePrefab.GetComponent<Tile>();
-                tilePossibilities[x, y] = new List<Tile> { tile };
-                CollapseNearbyTiles(tile, x, y);
+                Tile baseTile = baseTilePrefab.GetComponent<Tile>();
+                variant = FindVariant(baseTile, baseTile != null ? baseTile.rotation : 0);
+                if (variant == null)
+                {
+                    variant = FindFirstVariant(baseTile);
+                }
+
+                if (variant != null)
+                {
+                    tilePossibilities[x, y] = new List<TileVariant> { variant };
+                    CollapseNearbyTiles(variant, x, y);
+                }
             }
             else
             {
-                tile = Collapse(x, y);
+                variant = Collapse(x, y);
             }
 
-            PlaceTile(tile, x, y);
+            PlaceTile(variant, x, y);
         }
 
         // ReSharper disable Unity.PerformanceAnalysis
-        private Tile Collapse(int x, int y)
+        private TileVariant Collapse(int x, int y)
         {
-            List<Tile> selectedPossibilities = tilePossibilities[x, y];
+            List<TileVariant> selectedPossibilities = tilePossibilities[x, y];
             if (selectedPossibilities == null || selectedPossibilities.Count == 0)
             {
                 Debug.LogWarning("No possibilities left for cell (" + x + ", " + y + ").");
                 return null;
             }
             
-            Tile tile = selectedPossibilities[Random.Range(0, selectedPossibilities.Count)];
-            tilePossibilities[x, y] = new List<Tile> { tile };
+            TileVariant variant = selectedPossibilities[Random.Range(0, selectedPossibilities.Count)];
+            tilePossibilities[x, y] = new List<TileVariant> { variant };
             
-            CollapseNearbyTiles(tile, x, y);
+            CollapseNearbyTiles(variant, x, y);
             
-            return tile;
+            return variant;
         }
 
-        private void CollapseNearbyTiles(Tile tile, int x, int y)
+        private void CollapseNearbyTiles(TileVariant variant, int x, int y)
         {
-            if (tile == null) return;
+            if (variant == null) return;
 
             if (y - 1 >= 0 && tilePossibilities[x, y - 1].Count > 0)
             {
-                tilePossibilities[x, y - 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.North].Contains(t));
+                tilePossibilities[x, y - 1].RemoveAll(t => variant.ImpossibleByDirection[Direction.North].Contains(t));
             }
 
             if (y + 1 < height && tilePossibilities[x, y + 1].Count > 0)
             {
-                tilePossibilities[x, y + 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.South].Contains(t));
+                tilePossibilities[x, y + 1].RemoveAll(t => variant.ImpossibleByDirection[Direction.South].Contains(t));
             }
 
             if (x - 1 >= 0 && tilePossibilities[x - 1, y].Count > 0)
             {
-                tilePossibilities[x - 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.West].Contains(t));
+                tilePossibilities[x - 1, y].RemoveAll(t => variant.ImpossibleByDirection[Direction.West].Contains(t));
             }
 
             if (x + 1 < width && tilePossibilities[x + 1, y].Count > 0)
             {
-                tilePossibilities[x + 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.East].Contains(t));
+                tilePossibilities[x + 1, y].RemoveAll(t => variant.ImpossibleByDirection[Direction.East].Contains(t));
             }
         }
         
@@ -176,7 +212,7 @@ namespace WFC
         {
             bool collapsedSomething = false;
             
-            List<Tile> leastEntropyCell = null;
+            List<TileVariant> leastEntropyCell = null;
             int leastEntropyCellX = 0, leastEntropyCellY = 0;
             for (int x = 0; x < width; x++)
             {
@@ -187,7 +223,7 @@ namespace WFC
                         continue;
                     }
 
-                    List<Tile> cell = tilePossibilities[x, y];
+                    List<TileVariant> cell = tilePossibilities[x, y];
 
                     int cellCount = cell.Count;
                     if (cellCount == 0)
@@ -198,8 +234,8 @@ namespace WFC
 
                     if (cellCount == 1)
                     {
-                        Tile tile = Collapse(x, y);
-                        PlaceTile(tile, x, y);
+                        TileVariant variant = Collapse(x, y);
+                        PlaceTile(variant, x, y);
                         collapsedSomething = true;
                         continue;
                     }
@@ -219,17 +255,17 @@ namespace WFC
 
             if (leastEntropyCell != null)
             {
-                Tile tile = Collapse(leastEntropyCellX, leastEntropyCellY);
-                PlaceTile(tile, leastEntropyCellX, leastEntropyCellY);
+                TileVariant variant = Collapse(leastEntropyCellX, leastEntropyCellY);
+                PlaceTile(variant, leastEntropyCellX, leastEntropyCellY);
                 return true;
             }
 
             return false;
         }
 
-        private void PlaceTile(Tile tile, int x, int y)
+        private void PlaceTile(TileVariant variant, int x, int y)
         {
-            if (tile == null)
+            if (variant == null || variant.Tile == null)
             {
                 Debug.LogWarning("Trying to place a null tile at (" + x + ", " + y + "). Skipping.");
                 return;
@@ -243,18 +279,18 @@ namespace WFC
             Vector3 position = new Vector3(x * tileSize.x, 0f, y * tileSize.y);
             GameObject instance;
             #if UNITY_EDITOR
-            instance = PrefabUtility.InstantiatePrefab(tile.gameObject) as GameObject;
+            instance = PrefabUtility.InstantiatePrefab(variant.Tile.gameObject) as GameObject;
             #else
-            instance = Instantiate(tile.gameObject);
+            instance = Instantiate(variant.Tile.gameObject);
             #endif
             if (instance != null)
             {
                 instance.transform.position = transform.position + position;
-                instance.transform.rotation = Quaternion.identity;
+                instance.transform.rotation = variant.Tile.transform.rotation * Quaternion.Euler(0f, variant.Rotation * 90f, 0f);
 
                 Transform container = GetOrCreateContainer();
                 instance.transform.SetParent(container, true);
-                collapsedTiles[x, y] = tile;
+                collapsedTiles[x, y] = variant;
             }
         }
         
@@ -311,6 +347,130 @@ namespace WFC
             }
 
             return container;
+        }
+
+        private sealed class TileVariant
+        {
+            public Tile Tile;
+            public int Rotation;
+            public Direction RotatedConnections;
+            public Dictionary<Direction, List<TileVariant>> PossibleByDirection = new Dictionary<Direction, List<TileVariant>>();
+            public Dictionary<Direction, List<TileVariant>> ImpossibleByDirection = new Dictionary<Direction, List<TileVariant>>();
+        }
+
+        private static readonly Direction[] CardinalDirections =
+        {
+            Direction.North,
+            Direction.East,
+            Direction.South,
+            Direction.West
+        };
+
+        private void BuildTileVariants()
+        {
+            tileVariants.Clear();
+
+            foreach (Tile tile in tilePrefabs)
+            {
+                if (tile == null) continue;
+
+                int baseRotation = NormalizeRotation(tile.rotation);
+                List<int> rotations = GetAllowedRotations(tile);
+                foreach (int rotation in rotations)
+                {
+                    int normalized = NormalizeRotation(baseRotation + rotation);
+                    Direction rotatedConnections = tile.GetConnectionsForRotation(normalized);
+
+                    tileVariants.Add(new TileVariant
+                    {
+                        Tile = tile,
+                        Rotation = normalized,
+                        RotatedConnections = rotatedConnections
+                    });
+                }
+            }
+        }
+
+        private static List<int> GetAllowedRotations(Tile tile)
+        {
+            if (tile == null)
+            {
+                return new List<int> { 0 };
+            }
+
+            if (!tile.allowRotationVariants)
+            {
+                return new List<int> { 0 };
+            }
+
+            if (tile.allowedRotationSteps == null || tile.allowedRotationSteps.Count == 0)
+            {
+                return new List<int> { 0, 1, 2, 3 };
+            }
+
+            List<int> rotations = new List<int>();
+            foreach (int rotation in tile.allowedRotationSteps)
+            {
+                rotations.Add(NormalizeRotation(rotation));
+            }
+
+            return rotations;
+        }
+
+        private TileVariant FindVariant(Tile tile, int rotation)
+        {
+            if (tile == null) return null;
+            int normalized = NormalizeRotation(rotation);
+            return tileVariants.Find(v => v.Tile == tile && v.Rotation == normalized);
+        }
+
+        private TileVariant FindFirstVariant(Tile tile)
+        {
+            if (tile == null) return null;
+            return tileVariants.Find(v => v.Tile == tile);
+        }
+
+        private static int NormalizeRotation(int rotation)
+        {
+            int r = rotation % 4;
+            return r < 0 ? r + 4 : r;
+        }
+
+        private static bool IsCompatibleWith(TileVariant variant, TileVariant other, Direction direction)
+        {
+            if (variant == null || other == null || variant.Tile == null || other.Tile == null)
+            {
+                return false;
+            }
+
+            Direction thisCon = variant.RotatedConnections;
+            Direction otherCon = other.RotatedConnections;
+            bool byDirection = DirectionUtils.Has(thisCon, direction) && DirectionUtils.Has(otherCon, DirectionUtils.Opposite(direction));
+            bool byExplicitRule = HasExplicitConnection(variant, other, direction);
+            return byDirection || byExplicitRule;
+        }
+
+        private static bool HasExplicitConnection(TileVariant variant, TileVariant other, Direction direction)
+        {
+            List<ConnectedTile> connectedTiles = variant.Tile.connectedTiles;
+            if (connectedTiles == null || connectedTiles.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var connection in connectedTiles)
+            {
+                if (connection == null || connection.tile == null) continue;
+                if (connection.tile != other.Tile) continue;
+
+                Direction rotatedDir = DirectionUtils.Rotate(connection.direction, variant.Rotation);
+                if (DirectionUtils.Has(rotatedDir, direction))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
     }
