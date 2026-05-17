@@ -1,0 +1,30 @@
+{
+  "default": "empty",
+  "colors": [
+    {
+      "id": "empty",
+      "purpose": "Empty",
+      "rgba": [128, 128, 128, 255]
+    },
+    {
+      "id": "pathway",
+      "purpose": "Pathway",
+      "rgba": [0, 0, 0, 255]
+    },
+    {
+      "id": "river",
+      "purpose": "River",
+      "rgba": [0, 100, 255, 255]
+    },
+    {
+      "id": "grass",
+      "purpose": "Grass",
+      "rgba": [60, 160, 60, 255]
+    },
+    {
+      "id": "tree",
+      "purpose": "Tree",
+      "rgba": [120, 72, 32, 255]
+    }
+  ]
+}

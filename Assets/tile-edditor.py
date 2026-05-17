@@ -15,9 +15,18 @@ import zlib
 
 RGBA = Tuple[int, int, int, int]
 
-BACKGROUND: RGBA = (128, 128, 128, 255)
-PAINT: RGBA = (0, 170, 255, 255)
+DEFAULT_PALETTE_PATH = Path(__file__).resolve().parent / "tile-palette.json"
 DIRECTION_OPTIONS = ("North", "East", "South", "West")
+BRUSH_SHAPES = ("Square", "Circle")
+TOOL_BRUSH = "Brush"
+TOOL_FILL = "Fill"
+
+DARK_BG = "#1f1f1f"
+DARK_PANEL = "#2a2a2a"
+DARK_PANEL_ALT = "#303030"
+DARK_TEXT = "#f0f0f0"
+DARK_ACCENT = "#4fa3ff"
+DARK_BORDER = "#555555"
 
 DEFAULT_WIDTH = 64
 DEFAULT_HEIGHT = 64
@@ -30,6 +39,65 @@ def clamp(value: int, low: int, high: int) -> int:
 
 def rgba_to_hex(color: RGBA) -> str:
 	return "#%02x%02x%02x" % color[:3]
+
+
+@dataclass(frozen=True)
+class PaletteColor:
+	id: str
+	purpose: str
+	rgba: RGBA
+
+
+@dataclass
+class TilePalette:
+	default_id: str
+	colors: Tuple[PaletteColor, ...]
+	_by_id: dict[str, PaletteColor]
+
+	@classmethod
+	def load(cls, path: Path) -> "TilePalette":
+		payload = json.loads(path.read_text(encoding="utf-8"))
+		default_id = str(payload.get("default", "")).strip()
+		raw_colors = payload.get("colors")
+		if not isinstance(raw_colors, list) or not raw_colors:
+			raise ValueError("Palette file must contain a non-empty 'colors' array.")
+
+		colors: List[PaletteColor] = []
+		seen_ids: set[str] = set()
+		for index, entry in enumerate(raw_colors):
+			if not isinstance(entry, dict):
+				raise ValueError(f"Palette color at index {index} must be an object.")
+			color_id = str(entry.get("id", "")).strip()
+			if not color_id:
+				raise ValueError(f"Palette color at index {index} is missing 'id'.")
+			if color_id in seen_ids:
+				raise ValueError(f"Duplicate palette id: {color_id}")
+			seen_ids.add(color_id)
+
+			purpose = str(entry.get("purpose", color_id)).strip() or color_id
+			rgba_raw = entry.get("rgba")
+			if not isinstance(rgba_raw, list) or len(rgba_raw) < 3:
+				raise ValueError(f"Palette color '{color_id}' must define 'rgba' with at least 3 values.")
+			components = [clamp(int(value), 0, 255) for value in rgba_raw[:3]]
+			alpha = 255 if len(rgba_raw) < 4 else clamp(int(rgba_raw[3]), 0, 255)
+			colors.append(PaletteColor(color_id, purpose, (*components, alpha)))
+
+		if default_id and default_id not in seen_ids:
+			raise ValueError(f"Default palette id '{default_id}' is not defined in colors.")
+		if not default_id:
+			default_id = colors[0].id
+
+		by_id = {color.id: color for color in colors}
+		return cls(default_id, tuple(colors), by_id)
+
+	def color(self, color_id: str) -> PaletteColor:
+		return self._by_id[color_id]
+
+	def rgba(self, color_id: str) -> RGBA:
+		return self.color(color_id).rgba
+
+	def is_valid(self, color_id: str) -> bool:
+		return color_id in self._by_id
 
 
 def sanitize_name(name: str) -> str:
@@ -81,61 +149,127 @@ def write_png(path: Path, width: int, height: int, pixels: Sequence[RGBA]) -> No
 
 @dataclass
 class TileModel:
+	palette: TilePalette
 	width: int = DEFAULT_WIDTH
 	height: int = DEFAULT_HEIGHT
-	background_color: RGBA = BACKGROUND
-	paint_color: RGBA = PAINT
 
 	def __post_init__(self) -> None:
 		self.width = max(1, int(self.width))
 		self.height = max(1, int(self.height))
-		self.cells: List[List[bool]] = [[False for _ in range(self.width)] for _ in range(self.height)]
+		default = self.palette.default_id
+		self.cells: List[List[str]] = [[default for _ in range(self.width)] for _ in range(self.height)]
 
 	def resize(self, width: int, height: int) -> None:
 		width = max(1, int(width))
 		height = max(1, int(height))
-		new_cells = [[False for _ in range(width)] for _ in range(height)]
+		default = self.palette.default_id
+		new_cells = [[default for _ in range(width)] for _ in range(height)]
 
 		copy_height = min(self.height, height)
 		copy_width = min(self.width, width)
 		for y in range(copy_height):
 			for x in range(copy_width):
-				new_cells[y][x] = self.cells[y][x]
+				cell_id = self.cells[y][x]
+				new_cells[y][x] = cell_id if self.palette.is_valid(cell_id) else default
 
 		self.width = width
 		self.height = height
 		self.cells = new_cells
 
 	def clear(self) -> None:
+		default = self.palette.default_id
 		for y in range(self.height):
 			for x in range(self.width):
-				self.cells[y][x] = False
+				self.cells[y][x] = default
 
-	def set_cell(self, x: int, y: int, painted: bool) -> None:
+	def set_cell(self, x: int, y: int, color_id: str) -> None:
+		if 0 <= x < self.width and 0 <= y < self.height and self.palette.is_valid(color_id):
+			self.cells[y][x] = color_id
+
+	def cell_color_id(self, x: int, y: int) -> str:
 		if 0 <= x < self.width and 0 <= y < self.height:
-			self.cells[y][x] = painted
+			cell_id = self.cells[y][x]
+			if self.palette.is_valid(cell_id):
+				return cell_id
+		return self.palette.default_id
 
-	def is_painted(self, x: int, y: int) -> bool:
-		return 0 <= x < self.width and 0 <= y < self.height and self.cells[y][x]
+	def brush_cells(self, center_x: int, center_y: int, size: int, shape: str) -> List[Tuple[int, int]]:
+		size = max(1, int(size))
+		shape = shape.capitalize()
+		half = size // 2
+		start_x = center_x - half
+		start_y = center_y - half
+		cells: List[Tuple[int, int]] = []
+
+		for offset_y in range(size):
+			for offset_x in range(size):
+				if shape == "Circle":
+					dx = offset_x - half
+					dy = offset_y - half
+					radius = size / 2.0
+					if (dx * dx + dy * dy) > (radius * radius):
+						continue
+				cells.append((start_x + offset_x, start_y + offset_y))
+
+		return cells
+
+	def paint_brush(self, center_x: int, center_y: int, color_id: str, size: int = 1, shape: str = "Square") -> int:
+		if not self.palette.is_valid(color_id):
+			return 0
+
+		changed = 0
+		for x, y in self.brush_cells(center_x, center_y, size, shape):
+			if 0 <= x < self.width and 0 <= y < self.height and self.cells[y][x] != color_id:
+				self.cells[y][x] = color_id
+				changed += 1
+		return changed
+
+	def flood_fill(self, start_x: int, start_y: int, color_id: str) -> int:
+		if not (0 <= start_x < self.width and 0 <= start_y < self.height):
+			return 0
+		if not self.palette.is_valid(color_id):
+			return 0
+
+		target = self.cells[start_y][start_x]
+		if target == color_id:
+			return 0
+
+		stack = [(start_x, start_y)]
+		changed = 0
+
+		while stack:
+			x, y = stack.pop()
+			if not (0 <= x < self.width and 0 <= y < self.height):
+				continue
+			if self.cells[y][x] != target:
+				continue
+
+			self.cells[y][x] = color_id
+			changed += 1
+			stack.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+
+		return changed
 
 	def pixels(self) -> List[RGBA]:
 		flat: List[RGBA] = []
 		for y in range(self.height):
 			for x in range(self.width):
-				flat.append(self.paint_color if self.cells[y][x] else self.background_color)
+				flat.append(self.palette.rgba(self.cell_color_id(x, y)))
 		return flat
 
-	def cells_as_strings(self) -> List[str]:
-		return ["".join("1" if painted else "0" for painted in row) for row in self.cells]
+	def cells_as_color_ids(self) -> List[List[str]]:
+		return [list(row) for row in self.cells]
 
 	def to_json(self, connections: Sequence[str]) -> dict:
 		normalized_connections = [direction for direction in connections if direction in DIRECTION_OPTIONS]
+		default_rgba = list(self.palette.rgba(self.palette.default_id))
 		return {
 			"width": self.width,
 			"height": self.height,
-			"background_color": list(self.background_color),
-			"paint_color": list(self.paint_color),
-			"cells": self.cells_as_strings(),
+			"palette": DEFAULT_PALETTE_PATH.name,
+			"default_color": self.palette.default_id,
+			"background_color": default_rgba,
+			"cells": self.cells_as_color_ids(),
 			"mock_prefab": {
 				"prefab_name": "TilePrefab_TestVariant",
 				"unity_prefab_path": "Assets/Prefabs/Tiles/TilePrefab_TestVariant.prefab",
@@ -143,8 +277,8 @@ class TileModel:
 					"texture_path": "Assets/TileData/TilePrefab_TestVariant/tile.png",
 					"json_path": "Assets/TileData/TilePrefab_TestVariant/tile.json",
 					"grid_size": [self.width, self.height],
-					"background_color": list(self.background_color),
-					"paint_color": list(self.paint_color),
+					"background_color": default_rgba,
+					"palette": DEFAULT_PALETTE_PATH.name,
 				},
 				"tile_component": {
 					"texture": "tile.png",
@@ -168,28 +302,63 @@ class TileModel:
 
 
 class TilePaintApp:
-	def __init__(self, root: tk.Tk) -> None:
+	def __init__(self, root: tk.Tk, palette_path: Path = DEFAULT_PALETTE_PATH) -> None:
 		self.root = root
 		self.root.title("Tile Paint Tool")
 		self.root.minsize(720, 560)
+		self._apply_dark_theme()
+
+		try:
+			self.palette = TilePalette.load(palette_path)
+		except Exception as exc:
+			messagebox.showerror("Palette", f"Could not load palette from:\n{palette_path}\n\n{exc}")
+			raise SystemExit(1) from exc
 
 		self.output_root = Path(__file__).resolve().parent / "TileData"
-		self.model = TileModel()
+		self.model = TileModel(self.palette)
 		self.cell_size = DEFAULT_CELL_SIZE
-		self.drag_paint_state: bool | None = None
+		self.drag_paint_color_id: str | None = None
 		self.direction_vars = {direction: tk.BooleanVar(value=True) for direction in DIRECTION_OPTIONS}
 		self.direction_summary_var = tk.StringVar()
+		self.brush_size_var = tk.IntVar(value=1)
+		self.brush_shape_var = tk.StringVar(value=BRUSH_SHAPES[0])
+		self.tool_var = tk.StringVar(value=TOOL_BRUSH)
+		self.active_color_id = tk.StringVar(value=self.palette.default_id)
+		self.active_color_summary_var = tk.StringVar()
 
 		self.tile_name_var = tk.StringVar(value="Tile01")
 		self.width_var = tk.IntVar(value=self.model.width)
 		self.height_var = tk.IntVar(value=self.model.height)
-		self.status_var = tk.StringVar(value="Left click to paint. Right click to erase. Use the sidebar to pick connection directions.")
+		self.status_var = tk.StringVar(
+			value="Pick a palette color, then paint with the brush or fill. Right click resets cells to the default color."
+		)
 
 		self._build_ui()
 		self._refresh_direction_summary()
+		self._refresh_active_color_summary()
 		self._fit_cell_size_to_screen()
 		self._refresh_canvas_size()
 		self.redraw_all()
+
+	def _apply_dark_theme(self) -> None:
+		self.root.configure(bg=DARK_BG)
+		style = ttk.Style(self.root)
+		if "clam" in style.theme_names():
+			style.theme_use("clam")
+
+		style.configure(".", background=DARK_BG, foreground=DARK_TEXT, fieldbackground=DARK_PANEL)
+		style.configure("TFrame", background=DARK_BG)
+		style.configure("TLabel", background=DARK_BG, foreground=DARK_TEXT)
+		style.configure("TButton", background=DARK_PANEL, foreground=DARK_TEXT)
+		style.map("TButton", background=[("active", DARK_PANEL_ALT), ("pressed", DARK_PANEL_ALT)])
+		style.configure("TCheckbutton", background=DARK_BG, foreground=DARK_TEXT)
+		style.map("TCheckbutton", background=[("active", DARK_BG)], foreground=[("active", DARK_TEXT)])
+		style.configure("TRadiobutton", background=DARK_BG, foreground=DARK_TEXT)
+		style.map("TRadiobutton", background=[("active", DARK_BG)], foreground=[("active", DARK_TEXT)])
+		style.configure("TLabelframe", background=DARK_BG, foreground=DARK_TEXT)
+		style.configure("TLabelframe.Label", background=DARK_BG, foreground=DARK_TEXT)
+		style.configure("TEntry", fieldbackground=DARK_PANEL, foreground=DARK_TEXT, insertcolor=DARK_TEXT)
+		style.configure("TSpinbox", fieldbackground=DARK_PANEL, foreground=DARK_TEXT, insertcolor=DARK_TEXT)
 
 	def _fit_cell_size_to_screen(self) -> None:
 		self.root.update_idletasks()
@@ -234,6 +403,51 @@ class TilePaintApp:
 		ttk.Label(connections_box, text="Selected:").pack(anchor="w", pady=(6, 0))
 		ttk.Label(connections_box, textvariable=self.direction_summary_var, wraplength=150, justify="left").pack(anchor="w")
 
+		brush_box = ttk.Labelframe(sidebar, text="Brush", padding=8)
+		brush_box.pack(fill="x", pady=(0, 10))
+
+		brush_row = ttk.Frame(brush_box)
+		brush_row.pack(fill="x", pady=(0, 6))
+		ttk.Label(brush_row, text="Size:").pack(side="left")
+		ttk.Spinbox(brush_row, from_=1, to=64, textvariable=self.brush_size_var, width=6, justify="center").pack(side="left", padx=(6, 0))
+
+		shape_box = ttk.Frame(brush_box)
+		shape_box.pack(fill="x")
+		ttk.Label(shape_box, text="Shape:").pack(anchor="w")
+		for shape in BRUSH_SHAPES:
+			ttk.Radiobutton(shape_box, text=shape, value=shape, variable=self.brush_shape_var).pack(anchor="w", pady=1)
+
+		ttk.Label(brush_box, text="Size is the brush diameter in cells.", wraplength=160, justify="left").pack(anchor="w", pady=(6, 0))
+
+		color_box = ttk.Labelframe(sidebar, text="Colors", padding=8)
+		color_box.pack(fill="x", pady=(0, 10))
+		for palette_color in self.palette.colors:
+			row = ttk.Frame(color_box)
+			row.pack(fill="x", pady=2)
+			swatch = tk.Canvas(row, width=22, height=22, highlightthickness=1, highlightbackground=DARK_BORDER, bg=DARK_BG)
+			swatch.pack(side="left")
+			swatch.create_rectangle(2, 2, 20, 20, fill=rgba_to_hex(palette_color.rgba), outline=DARK_BORDER)
+			ttk.Radiobutton(
+				row,
+				text=palette_color.purpose,
+				value=palette_color.id,
+				variable=self.active_color_id,
+				command=self._refresh_active_color_summary,
+			).pack(side="left", padx=(6, 0))
+		ttk.Label(color_box, textvariable=self.active_color_summary_var, wraplength=160, justify="left").pack(anchor="w", pady=(6, 0))
+		ttk.Label(
+			color_box,
+			text=f"Palette: {DEFAULT_PALETTE_PATH.name}",
+			wraplength=160,
+			justify="left",
+		).pack(anchor="w", pady=(4, 0))
+
+		tool_box = ttk.Labelframe(sidebar, text="Tool", padding=8)
+		tool_box.pack(fill="x", pady=(0, 10))
+		for tool in (TOOL_BRUSH, TOOL_FILL):
+			ttk.Radiobutton(tool_box, text=tool, value=tool, variable=self.tool_var).pack(anchor="w", pady=1)
+		ttk.Label(tool_box, text="Fill floods the connected area from the clicked cell.", wraplength=160, justify="left").pack(anchor="w", pady=(6, 0))
+
 		main = ttk.Frame(content)
 		main.pack(side="left", fill="both", expand=True)
 
@@ -253,7 +467,7 @@ class TilePaintApp:
 		ttk.Button(controls, text="Clear", command=self.clear_tile).grid(row=0, column=7, padx=(0, 8))
 		ttk.Button(controls, text="Save", command=self.save_tile).grid(row=0, column=8)
 
-		self.canvas = tk.Canvas(main, highlightthickness=1, highlightbackground="#555555", bg=rgba_to_hex(BACKGROUND))
+		self.canvas = tk.Canvas(main, highlightthickness=1, highlightbackground=DARK_BORDER, bg=DARK_BG)
 		self.canvas.pack(fill="both", expand=True)
 		self.canvas.bind("<Button-1>", lambda event: self._paint_from_event(event, True))
 		self.canvas.bind("<B1-Motion>", lambda event: self._paint_from_event(event, True))
@@ -263,7 +477,18 @@ class TilePaintApp:
 		footer = ttk.Frame(container)
 		footer.pack(fill="x", pady=(8, 0))
 		ttk.Label(footer, textvariable=self.status_var).pack(side="left")
-		ttk.Label(footer, text=f"Paint color: {rgba_to_hex(PAINT)}").pack(side="right")
+		self.footer_color_label = ttk.Label(footer, text="")
+		self.footer_color_label.pack(side="right")
+
+	def _refresh_active_color_summary(self) -> None:
+		color_id = self.active_color_id.get()
+		if not self.palette.is_valid(color_id):
+			color_id = self.palette.default_id
+			self.active_color_id.set(color_id)
+		entry = self.palette.color(color_id)
+		summary = f"{entry.purpose} ({entry.id})"
+		self.active_color_summary_var.set(f"Active: {summary}")
+		self.footer_color_label.configure(text=f"Active: {summary}  {rgba_to_hex(entry.rgba)}")
 
 	def _refresh_direction_summary(self) -> None:
 		selected = self.selected_directions()
@@ -292,29 +517,50 @@ class TilePaintApp:
 			return x, y
 		return None
 
-	def _paint_from_event(self, event: tk.Event, painted: bool) -> None:
+	def _paint_color_for_click(self, use_active_color: bool) -> str:
+		if use_active_color:
+			color_id = self.active_color_id.get()
+			if self.palette.is_valid(color_id):
+				return color_id
+		return self.palette.default_id
+
+	def _paint_from_event(self, event: tk.Event, use_active_color: bool) -> None:
 		cell = self._cell_from_event(event)
 		if cell is None:
 			return
 
+		color_id = self._paint_color_for_click(use_active_color)
+		purpose = self.palette.color(color_id).purpose
 		x, y = cell
-		if self.model.is_painted(x, y) == painted:
-			return
+		if self.tool_var.get() == TOOL_FILL:
+			changed = self.model.flood_fill(x, y, color_id)
+			if changed == 0:
+				return
+			for fill_y in range(self.model.height):
+				for fill_x in range(self.model.width):
+					self.draw_cell(fill_x, fill_y)
+			self.status_var.set(f"Filled area from ({x}, {y}) with {purpose}.")
+		else:
+			changed = self.model.paint_brush(x, y, color_id, self.brush_size_var.get(), self.brush_shape_var.get())
+			if changed == 0:
+				return
 
-		self.model.set_cell(x, y, painted)
-		self.draw_cell(x, y)
-		self.drag_paint_state = painted
-		self.status_var.set(f"Updated cell ({x}, {y}).")
+			for brush_x, brush_y in self.model.brush_cells(x, y, self.brush_size_var.get(), self.brush_shape_var.get()):
+				self.draw_cell(brush_x, brush_y)
+
+			self.status_var.set(f"Painted {purpose} with {self.brush_shape_var.get().lower()} brush at ({x}, {y}).")
+
+		self.drag_paint_color_id = color_id
 
 	def draw_cell(self, x: int, y: int) -> None:
 		x0 = x * self.cell_size
 		y0 = y * self.cell_size
 		x1 = x0 + self.cell_size
 		y1 = y0 + self.cell_size
-		fill = rgba_to_hex(self.model.paint_color if self.model.is_painted(x, y) else self.model.background_color)
+		fill = rgba_to_hex(self.model.palette.rgba(self.model.cell_color_id(x, y)))
 		tag = f"cell_{x}_{y}"
 		self.canvas.delete(tag)
-		self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline="#666666", tags=tag)
+		self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=DARK_BORDER, tags=tag)
 
 	def redraw_all(self) -> None:
 		self.canvas.delete("all")
@@ -351,12 +597,24 @@ class TilePaintApp:
 
 
 def run_self_test() -> None:
+	palette = TilePalette.load(DEFAULT_PALETTE_PATH)
+	pathway_id = "pathway"
+	grass_id = "grass"
+
 	with tempfile.TemporaryDirectory() as temp_dir:
 		root = Path(temp_dir)
-		model = TileModel(width=4, height=4)
-		model.set_cell(1, 1, True)
-		model.set_cell(2, 1, True)
-		model.set_cell(1, 2, True)
+		model = TileModel(palette, width=4, height=4)
+		assert model.paint_brush(2, 2, pathway_id, size=1, shape="Square") == 1
+		model.clear()
+		assert model.paint_brush(0, 0, pathway_id, size=3, shape="Square") == 4
+		model.clear()
+		assert model.paint_brush(1, 1, pathway_id, size=3, shape="Circle") >= 1
+		model.clear()
+		model.set_cell(0, 0, pathway_id)
+		model.set_cell(1, 0, pathway_id)
+		assert model.flood_fill(0, 0, grass_id) == 2
+		assert model.cell_color_id(0, 0) == grass_id
+		assert model.cell_color_id(1, 0) == grass_id
 
 		first = model.save("Example Tile", root, DIRECTION_OPTIONS)
 		second = model.save("Example Tile", root, ["North", "South"])
@@ -372,15 +630,22 @@ def run_self_test() -> None:
 
 		payload = json.loads((first / "tile.json").read_text(encoding="utf-8"))
 		assert payload["width"] == 4 and payload["height"] == 4
-		assert payload["cells"][1][1] == "1"
+		assert payload["default_color"] == palette.default_id
+		assert payload["cells"][0][0] == grass_id
 		assert payload["mock_prefab"]["tile_component"]["connections"] == ["North", "East", "South", "West"]
 
 	print("Self-test passed.")
 
 
 def parse_args() -> argparse.Namespace:
-	parser = argparse.ArgumentParser(description="Simple one-color tile paint tool.")
+	parser = argparse.ArgumentParser(description="Tile paint tool with palette-defined colors.")
 	parser.add_argument("--self-test", action="store_true", help="Run a headless save/export test and exit.")
+	parser.add_argument(
+		"--palette",
+		type=Path,
+		default=DEFAULT_PALETTE_PATH,
+		help=f"Path to palette JSON (default: {DEFAULT_PALETTE_PATH.name})",
+	)
 	return parser.parse_args()
 
 
@@ -391,7 +656,7 @@ def main() -> None:
 		return
 
 	root = tk.Tk()
-	TilePaintApp(root)
+	TilePaintApp(root, palette_path=args.palette)
 	root.mainloop()
 
 

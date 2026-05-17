@@ -46,6 +46,7 @@ namespace WFC
         
         private List<TileVariant>[,] tilePossibilities;
         private TileVariant[,] collapsedTiles;
+        private GameObject[,] spawnedTiles;
         
         public void Generate()
         {
@@ -74,6 +75,7 @@ namespace WFC
             SetCalculationForPossibleTiles();
             FillTilePossibilitiesArray();
             collapsedTiles = new TileVariant[width, height];
+            spawnedTiles = new GameObject[width, height];
             
             SetStartTile();
 
@@ -85,6 +87,8 @@ namespace WFC
                     break;
                 }
             }
+
+            PruneIsolatedTiles();
         #endif
         }
 
@@ -290,8 +294,92 @@ namespace WFC
 
                 Transform container = GetOrCreateContainer();
                 instance.transform.SetParent(container, true);
+                if (spawnedTiles != null)
+                {
+                    spawnedTiles[x, y] = instance;
+                }
                 collapsedTiles[x, y] = variant;
             }
+        }
+
+        private void PruneIsolatedTiles()
+        {
+            bool removedAny;
+
+            do
+            {
+                removedAny = false;
+
+                for (int x = 0; x < width; x++)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        TileVariant variant = collapsedTiles != null ? collapsedTiles[x, y] : null;
+                        if (variant == null || IsBaseTileVariant(variant))
+                        {
+                            continue;
+                        }
+
+                        if (!IsSurroundedByEmptyTiles(x, y))
+                        {
+                            continue;
+                        }
+
+                        RemovePlacedTile(x, y);
+                        removedAny = true;
+                    }
+                }
+            }
+            while (removedAny);
+        }
+
+        private bool IsSurroundedByEmptyTiles(int x, int y)
+        {
+            return IsEmptyCell(x, y - 1)
+                && IsEmptyCell(x + 1, y)
+                && IsEmptyCell(x, y + 1)
+                && IsEmptyCell(x - 1, y);
+        }
+
+        private bool IsEmptyCell(int x, int y)
+        {
+            if (x < 0 || x >= width || y < 0 || y >= height)
+            {
+                return true;
+            }
+
+            return collapsedTiles == null || collapsedTiles[x, y] == null;
+        }
+
+        private void RemovePlacedTile(int x, int y)
+        {
+            GameObject instance = spawnedTiles != null ? spawnedTiles[x, y] : null;
+            if (instance != null)
+            {
+#if UNITY_EDITOR
+                Undo.DestroyObjectImmediate(instance);
+#else
+                DestroyImmediate(instance);
+#endif
+            }
+
+            if (spawnedTiles != null)
+            {
+                spawnedTiles[x, y] = null;
+            }
+
+            if (collapsedTiles != null)
+            {
+                collapsedTiles[x, y] = null;
+            }
+        }
+
+        private bool IsBaseTileVariant(TileVariant variant)
+        {
+            return baseTilePrefab != null
+                   && variant != null
+                   && variant.Tile != null
+                   && variant.Tile.gameObject == baseTilePrefab;
         }
         
 
