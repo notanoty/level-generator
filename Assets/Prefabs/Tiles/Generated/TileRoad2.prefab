@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1001 &258334802307562135
+--- !u!1001 &6806167577269329850
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -11,7 +11,7 @@ PrefabInstance:
     - target: {fileID: 91365878708343121, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 40cbc37ba18362f46b002fbaa7465a70, type: 2}
+      objectReference: {fileID: 2100000, guid: 8c1bc4c3845f37a4dbf2828828f187c3, type: 2}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -54,7 +54,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: connections
-      value: 3
+      value: 6
       objectReference: {fileID: 0}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: allowedRotationSteps.Array.size
@@ -74,7 +74,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9010719439865631840, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_Name
-      value: TileRoad6
+      value: TileRoad2
       objectReference: {fileID: 0}
     - target: {fileID: 9010719439865631840, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_TagString

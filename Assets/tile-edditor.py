@@ -3,6 +3,7 @@
 import argparse
 import json
 import re
+import shutil
 import struct
 import tempfile
 import tkinter as tk
@@ -34,6 +35,8 @@ DARK_BORDER = "#555555"
 DEFAULT_WIDTH = 64
 DEFAULT_HEIGHT = 64
 DEFAULT_CELL_SIZE = 24
+GALLERY_PANEL_WIDTH = 180
+GALLERY_PREVIEW_MAX = 96
 
 
 def clamp(value: int, low: int, high: int) -> int:
@@ -147,6 +150,19 @@ def sanitize_name(name: str) -> str:
 	cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", name.strip())
 	cleaned = cleaned.strip("._-")
 	return cleaned or "Tile"
+
+
+def list_tile_folders(output_root: Path) -> List[Path]:
+	if not output_root.is_dir():
+		return []
+
+	folders: List[Path] = []
+	for entry in sorted(output_root.iterdir(), key=lambda path: path.name.lower()):
+		if not entry.is_dir():
+			continue
+		if (entry / "tile.json").is_file() and (entry / "tile.png").is_file():
+			folders.append(entry)
+	return folders
 
 
 def unique_folder(base: Path, tile_name: str) -> Path:
@@ -326,6 +342,44 @@ class TileModel:
 	def cells_as_color_ids(self) -> List[List[str]]:
 		return [list(row) for row in self.cells]
 
+	@classmethod
+	def load_from_folder(cls, folder: Path, palette: TilePalette) -> Tuple["TileModel", List[str]]:
+		json_path = folder / "tile.json"
+		if not json_path.is_file():
+			raise ValueError(f"Missing tile.json in {folder}")
+
+		payload = json.loads(json_path.read_text(encoding="utf-8"))
+		width = max(1, int(payload.get("width", DEFAULT_WIDTH)))
+		height = max(1, int(payload.get("height", DEFAULT_HEIGHT)))
+		raw_cells = payload.get("cells")
+		if not isinstance(raw_cells, list):
+			raise ValueError("tile.json is missing a valid 'cells' array.")
+
+		model = cls(palette, width=width, height=height)
+		default_id = palette.default_id
+		for y, row in enumerate(raw_cells):
+			if y >= model.height or not isinstance(row, list):
+				continue
+			for x, cell_id in enumerate(row):
+				if x >= model.width:
+					break
+				color_id = str(cell_id).strip()
+				if palette.is_valid(color_id):
+					model.cells[y][x] = color_id
+				else:
+					model.cells[y][x] = default_id
+
+		connections: List[str] = []
+		mock = payload.get("mock_prefab")
+		if isinstance(mock, dict):
+			component = mock.get("tile_component")
+			if isinstance(component, dict):
+				raw_connections = component.get("connections")
+				if isinstance(raw_connections, list):
+					connections = [direction for direction in raw_connections if direction in DIRECTION_OPTIONS]
+
+		return model, connections
+
 	def to_json(self, connections: Sequence[str]) -> dict:
 		normalized_connections = [direction for direction in connections if direction in DIRECTION_OPTIONS]
 		default_rgba = list(self.palette.rgba(self.palette.default_id))
@@ -358,7 +412,14 @@ class TileModel:
 			},
 		}
 
-	def save(self, tile_name: str, output_root: Path, connections: Sequence[str]) -> Path:
+	def save(
+		self,
+		tile_name: str,
+		output_root: Path,
+		connections: Sequence[str],
+		*,
+		target_folder: Path | None = None,
+	) -> Path:
 		missing = self.unpainted_connection_slots(connections)
 		if missing:
 			sample = ", ".join(f"({x}, {y})" for x, y in missing[:6])
@@ -368,8 +429,12 @@ class TileModel:
 				f"Unpainted slots: {sample}{extra}."
 			)
 
-		folder = unique_folder(output_root, tile_name)
-		folder.mkdir(parents=True, exist_ok=False)
+		if target_folder is not None:
+			folder = target_folder
+			folder.mkdir(parents=True, exist_ok=True)
+		else:
+			folder = unique_folder(output_root, tile_name)
+			folder.mkdir(parents=True, exist_ok=False)
 
 		(folder / "tile.json").write_text(json.dumps(self.to_json(connections), indent=2), encoding="utf-8")
 		export_pixels = rotate_pixels_180(self.width, self.height, self.pixels())
@@ -381,7 +446,7 @@ class TilePaintApp:
 	def __init__(self, root: tk.Tk, palette_path: Path = DEFAULT_PALETTE_PATH) -> None:
 		self.root = root
 		self.root.title("Tile Paint Tool")
-		self.root.minsize(720, 560)
+		self.root.minsize(920, 560)
 		self._apply_dark_theme()
 
 		try:
@@ -391,7 +456,11 @@ class TilePaintApp:
 			raise SystemExit(1) from exc
 
 		self.output_root = Path(__file__).resolve().parent / "TileData"
+		self.output_root.mkdir(parents=True, exist_ok=True)
 		self.model = TileModel(self.palette)
+		self.current_tile_folder: Path | None = None
+		self._clean_state: tuple | None = None
+		self._gallery_photos: List[tk.PhotoImage] = []
 		self.cell_size = DEFAULT_CELL_SIZE
 		self.drag_paint_color_id: str | None = None
 		self.direction_vars = {direction: tk.BooleanVar(value=True) for direction in DIRECTION_OPTIONS}
@@ -415,6 +484,8 @@ class TilePaintApp:
 		self._fit_cell_size_to_screen()
 		self._refresh_canvas_size()
 		self.redraw_all()
+		self._commit_clean_state()
+		self._refresh_tile_gallery()
 
 	def _apply_dark_theme(self) -> None:
 		self.root.configure(bg=DARK_BG)
@@ -559,6 +630,40 @@ class TilePaintApp:
 		self.canvas.bind("<Button-3>", lambda event: self._paint_from_event(event, False))
 		self.canvas.bind("<B3-Motion>", lambda event: self._paint_from_event(event, False))
 
+		gallery_panel = ttk.Labelframe(content, text="Tile Library", padding=4)
+		gallery_panel.pack(side="right", fill="y", padx=(10, 0))
+
+		ttk.Label(
+			gallery_panel,
+			text="Left-click to open. Right-click for options.",
+			wraplength=GALLERY_PANEL_WIDTH - 12,
+			justify="left",
+		).pack(anchor="w", pady=(0, 6))
+
+		gallery_scroll_row = ttk.Frame(gallery_panel)
+		gallery_scroll_row.pack(fill="both", expand=True)
+
+		self.gallery_canvas = tk.Canvas(
+			gallery_scroll_row,
+			width=GALLERY_PANEL_WIDTH,
+			highlightthickness=1,
+			highlightbackground=DARK_BORDER,
+			bg=DARK_PANEL,
+		)
+		gallery_scrollbar = ttk.Scrollbar(gallery_scroll_row, orient="vertical", command=self.gallery_canvas.yview)
+		self.gallery_inner = ttk.Frame(self.gallery_canvas)
+		self.gallery_inner.bind(
+			"<Configure>",
+			lambda _event: self.gallery_canvas.configure(scrollregion=self.gallery_canvas.bbox("all")),
+		)
+		self._gallery_window_id = self.gallery_canvas.create_window((0, 0), window=self.gallery_inner, anchor="nw")
+		self.gallery_canvas.configure(yscrollcommand=gallery_scrollbar.set)
+		self.gallery_canvas.pack(side="left", fill="both", expand=True)
+		gallery_scrollbar.pack(side="right", fill="y")
+
+		self.gallery_canvas.bind("<Configure>", self._on_gallery_canvas_configure)
+		self.gallery_canvas.bind("<MouseWheel>", self._on_gallery_mousewheel)
+
 		footer = ttk.Frame(container)
 		footer.pack(fill="x", pady=(8, 0))
 		ttk.Label(footer, textvariable=self.status_var).pack(side="left")
@@ -574,6 +679,186 @@ class TilePaintApp:
 		summary = f"{entry.purpose} ({entry.id})"
 		self.active_color_summary_var.set(f"Active: {summary}")
 		self.footer_color_label.configure(text=f"Active: {summary}  {rgba_to_hex(entry.rgba)}")
+
+	def _on_gallery_canvas_configure(self, event: tk.Event) -> None:
+		self.gallery_canvas.itemconfigure(self._gallery_window_id, width=event.width)
+
+	def _bind_gallery_mousewheel(self, widget: tk.Widget) -> None:
+		widget.bind("<MouseWheel>", self._on_gallery_mousewheel)
+
+	def _on_gallery_mousewheel(self, event: tk.Event) -> None:
+		delta = -1 * (event.delta // 120) if event.delta else 0
+		if delta:
+			self.gallery_canvas.yview_scroll(delta, "units")
+
+	def _bind_gallery_tile_item(self, widgets: Sequence[tk.Widget], folder: Path) -> None:
+		for widget in widgets:
+			widget.bind("<Button-1>", lambda _event, tile_folder=folder: self._request_open_tile(tile_folder))
+			widget.bind("<Button-3>", lambda event, tile_folder=folder: self._show_tile_gallery_menu(event, tile_folder))
+			self._bind_gallery_mousewheel(widget)
+
+	def _show_tile_gallery_menu(self, event: tk.Event, folder: Path) -> None:
+		menu = tk.Menu(
+			self.root,
+			tearoff=0,
+			bg=DARK_PANEL,
+			fg=DARK_TEXT,
+			activebackground=DARK_PANEL_ALT,
+			activeforeground=DARK_TEXT,
+		)
+		menu.add_command(label="Delete", command=lambda: self._delete_tile(folder))
+		try:
+			menu.tk_popup(event.x_root, event.y_root)
+		finally:
+			menu.grab_release()
+
+	def _reset_to_new_tile(self) -> None:
+		self.model = TileModel(self.palette)
+		self.current_tile_folder = None
+		self.tile_name_var.set("Tile01")
+		self.width_var.set(self.model.width)
+		self.height_var.set(self.model.height)
+		self._fit_cell_size_to_screen()
+		self._refresh_canvas_size()
+		self.redraw_all()
+		self._commit_clean_state()
+
+	def _delete_tile(self, folder: Path) -> None:
+		if not messagebox.askyesno(
+			"Delete Tile",
+			f"Delete tile '{folder.name}'?\n\nThis permanently removes the folder from TileData.",
+		):
+			return
+
+		is_current = (
+			self.current_tile_folder is not None and folder.resolve() == self.current_tile_folder.resolve()
+		)
+		try:
+			shutil.rmtree(folder)
+		except Exception as exc:
+			messagebox.showerror("Delete Tile", f"Could not delete tile:\n{folder}\n\n{exc}")
+			return
+
+		if is_current:
+			self._reset_to_new_tile()
+
+		self._refresh_tile_gallery()
+		self.status_var.set(f"Deleted {folder.name}.")
+
+	def _capture_state(self) -> tuple:
+		return (
+			self.model.width,
+			self.model.height,
+			tuple(tuple(row) for row in self.model.cells),
+			tuple(self.selected_directions()),
+			self.tile_name_var.get().strip(),
+			str(self.current_tile_folder.resolve()) if self.current_tile_folder else None,
+		)
+
+	def _commit_clean_state(self) -> None:
+		self._clean_state = self._capture_state()
+
+	def _is_dirty(self) -> bool:
+		return self._clean_state is None or self._capture_state() != self._clean_state
+
+	def _confirm_leave_current_tile(self) -> bool:
+		if not self._is_dirty():
+			return True
+
+		answer = messagebox.askyesnocancel(
+			"Unsaved changes",
+			"The current tile has unsaved changes.\n\nSave before opening another tile?",
+		)
+		if answer is None:
+			return False
+		if answer:
+			return self._save_tile(show_success=False)
+		return True
+
+	def _refresh_tile_gallery(self) -> None:
+		for child in self.gallery_inner.winfo_children():
+			child.destroy()
+		self._gallery_photos.clear()
+
+		folders = list_tile_folders(self.output_root)
+		if not folders:
+			ttk.Label(
+				self.gallery_inner,
+				text="No saved tiles yet.\nSave a tile to see it here.",
+				wraplength=GALLERY_PANEL_WIDTH - 16,
+				justify="left",
+			).pack(anchor="w", padx=4, pady=8)
+			return
+
+		current_resolved = self.current_tile_folder.resolve() if self.current_tile_folder else None
+		for folder in folders:
+			png_path = folder / "tile.png"
+			row = ttk.Frame(self.gallery_inner)
+			row.pack(fill="x", padx=4, pady=6)
+
+			if current_resolved is not None and folder.resolve() == current_resolved:
+				highlight = tk.Frame(row, highlightthickness=2, highlightbackground=DARK_ACCENT)
+				highlight.pack(fill="x")
+				content_parent = highlight
+			else:
+				content_parent = row
+
+			name_label = ttk.Label(content_parent, text=folder.name, wraplength=GALLERY_PANEL_WIDTH - 20)
+			name_label.pack(anchor="w")
+
+			try:
+				photo = tk.PhotoImage(file=str(png_path))
+			except tk.TclError:
+				missing_label = ttk.Label(content_parent, text="(preview unavailable)", foreground=DARK_TEXT)
+				missing_label.pack(anchor="w")
+				self._bind_gallery_tile_item((row, content_parent, name_label, missing_label), folder)
+				continue
+
+			width = photo.width()
+			height = photo.height()
+			if width > GALLERY_PREVIEW_MAX or height > GALLERY_PREVIEW_MAX:
+				factor = max((width + GALLERY_PREVIEW_MAX - 1) // GALLERY_PREVIEW_MAX, (height + GALLERY_PREVIEW_MAX - 1) // GALLERY_PREVIEW_MAX)
+				factor = max(1, factor)
+				photo = photo.subsample(factor, factor)
+
+			self._gallery_photos.append(photo)
+			image_label = tk.Label(
+				content_parent,
+				image=photo,
+				bg=DARK_PANEL,
+				highlightthickness=1,
+				highlightbackground=DARK_BORDER,
+				cursor="hand2",
+			)
+			image_label.pack(anchor="w", pady=(4, 0))
+			self._bind_gallery_tile_item((row, content_parent, name_label, image_label), folder)
+
+	def _request_open_tile(self, folder: Path) -> None:
+		if self.current_tile_folder is not None and folder.resolve() == self.current_tile_folder.resolve():
+			return
+		if not self._confirm_leave_current_tile():
+			return
+
+		try:
+			model, connections = TileModel.load_from_folder(folder, self.palette)
+		except Exception as exc:
+			messagebox.showerror("Open Tile", f"Could not open tile:\n{folder}\n\n{exc}")
+			return
+
+		self.model = model
+		self.current_tile_folder = folder
+		self.tile_name_var.set(folder.name)
+		self.width_var.set(model.width)
+		self.height_var.set(model.height)
+		for direction in DIRECTION_OPTIONS:
+			self.direction_vars[direction].set(direction in connections)
+		self._refresh_direction_summary()
+		self._fit_cell_size_to_screen()
+		self._refresh_canvas_size()
+		self.redraw_all()
+		self._commit_clean_state()
+		self._refresh_tile_gallery()
+		self.status_var.set(f"Opened {folder.name}.")
 
 	def _refresh_direction_summary(self) -> None:
 		selected = self.selected_directions()
@@ -666,10 +951,16 @@ class TilePaintApp:
 				self.draw_cell(x, y)
 
 	def new_tile(self) -> None:
+		if not self._confirm_leave_current_tile():
+			return
+
 		self.model.resize(self.width_var.get(), self.height_var.get())
 		self.model.clear()
+		self.current_tile_folder = None
 		self._refresh_canvas_size()
 		self.redraw_all()
+		self._commit_clean_state()
+		self._refresh_tile_gallery()
 		self.status_var.set("Created a new empty tile.")
 
 	def clear_tile(self) -> None:
@@ -678,21 +969,41 @@ class TilePaintApp:
 		self.status_var.set("Cleared tile.")
 
 	def save_tile(self) -> None:
+		self._save_tile(show_success=True)
+
+	def _save_target_folder(self, tile_name: str) -> Path | None:
+		if self.current_tile_folder is not None and self.current_tile_folder.name == sanitize_name(tile_name):
+			return self.current_tile_folder
+		return None
+
+	def _save_tile(self, *, show_success: bool) -> bool:
 		tile_name = self.tile_name_var.get().strip()
 		if not tile_name:
 			messagebox.showerror("Save Tile", "Please enter a tile name.")
-			return
+			return False
 
 		connections = self.selected_directions()
+		target_folder = self._save_target_folder(tile_name)
 		try:
-			saved_folder = self.model.save(tile_name, self.output_root, connections)
+			saved_folder = self.model.save(
+				tile_name,
+				self.output_root,
+				connections,
+				target_folder=target_folder,
+			)
 		except Exception as exc:  # pragma: no cover - surfaced to UI
 			messagebox.showerror("Save Tile", f"Could not save tile:\n{exc}")
-			return
+			return False
 
+		self.current_tile_folder = saved_folder
+		self.tile_name_var.set(saved_folder.name)
 		self.redraw_all()
+		self._commit_clean_state()
+		self._refresh_tile_gallery()
 		self.status_var.set(f"Saved to {saved_folder}")
-		messagebox.showinfo("Save Tile", f"Saved tile data to:\n{saved_folder}")
+		if show_success:
+			messagebox.showinfo("Save Tile", f"Saved tile data to:\n{saved_folder}")
+		return True
 
 
 def run_self_test() -> None:
@@ -764,6 +1075,16 @@ def run_self_test() -> None:
 			raise AssertionError("Expected save to fail when connection slots are not pathway.")
 		except ValueError:
 			pass
+
+		loaded, loaded_connections = TileModel.load_from_folder(first, palette)
+		assert loaded.width == 4 and loaded.height == 4
+		assert loaded_connections == ["North", "East", "South", "West"]
+		assert first in list_tile_folders(root)
+
+		loaded.set_cell(2, 2, grass_id)
+		loaded.save("ignored", root, loaded_connections, target_folder=first)
+		reloaded, _ = TileModel.load_from_folder(first, palette)
+		assert reloaded.cell_color_id(2, 2) == grass_id
 
 	print("Self-test passed.")
 
