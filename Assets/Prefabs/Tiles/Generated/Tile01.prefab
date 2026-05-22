@@ -14,15 +14,15 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 500e1f5954acbc64ba2a3560f3bc374d, type: 2}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 222.56905
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 204.01251
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalRotation.w
@@ -30,15 +30,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalRotation.z
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -54,7 +54,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: connections
-      value: 9
+      value: 6
       objectReference: {fileID: 0}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: allowedRotationSteps.Array.size
