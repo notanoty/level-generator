@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -80,7 +81,7 @@ namespace WFC
             SetStartTile();
 
             int maxSteps = width * height;
-            for (int i = 0; i < maxSteps; i++)
+            for (int i = 0; i < 1; i++)
             {
                 if (!HandleWaveFunctionCollapse())
                 {
@@ -88,10 +89,55 @@ namespace WFC
                 }
             }
 
+            LogTilePossibilities();
             PruneIsolatedTiles();
         #endif
         }
 
+        public void LogTilePossibilities()
+        {
+#if UNITY_EDITOR
+            if ((tileVariants == null || tileVariants.Count == 0) && (tilePrefabs == null || tilePrefabs.Count == 0))
+            {
+                RefreshTilePrefabs();
+                BuildTileVariants();
+            }
+#endif
+            if (tileVariants == null || tileVariants.Count == 0)
+            {
+                Debug.LogWarning("No tile variants to log. Generate once or ensure prefabs are loaded.");
+                return;
+            }
+
+            StringBuilder sb = new StringBuilder(2048);
+            sb.AppendLine($"Tile variants: {tileVariants.Count}");
+            for (int i = 0; i < tileVariants.Count; i++)
+            {
+                TileVariant variant = tileVariants[i];
+                sb.AppendLine($"[{i}] {FormatVariantDetails(variant)}");
+            }
+
+            if (tilePossibilities != null)
+            {
+                sb.AppendLine("Grid possibilities:");
+                for (int x = 0; x < width; x++)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        List<TileVariant> cell = tilePossibilities[x, y];
+                        int count = cell != null ? cell.Count : 0;
+                        sb.AppendLine($"Cell ({x},{y}) count={count}");
+                        if (cell == null) continue;
+                        for (int i = 0; i < cell.Count; i++)
+                        {
+                            sb.AppendLine($"  - {FormatVariantSummary(cell[i])}");
+                        }
+                    }
+                }
+            }
+
+            Debug.Log(sb.ToString());
+        }
 
         private void FillTilePossibilitiesArray()
         {
@@ -209,6 +255,12 @@ namespace WFC
         {
             // ConstrainCellToCollapsedNeighbors(x, y);
             List<TileVariant> selectedPossibilities = tilePossibilities[x, y];
+            
+            foreach (var tile in selectedPossibilities)
+            {
+                Debug.Log("Possbile tile: " +tile.Tile.name);
+            }
+            
             if (selectedPossibilities == null || selectedPossibilities.Count == 0)
             {
                 Debug.LogWarning("No possibilities left for cell (" + x + ", " + y + ").");
@@ -297,6 +349,7 @@ namespace WFC
 
             if (leastEntropyCell != null)
             {
+                Debug.Log($"Cell position: X {leastEntropyCellX} Y {leastEntropyCellY}");
                 TileVariant variant = Collapse(leastEntropyCellX, leastEntropyCellY);
                 PlaceTile(variant, leastEntropyCellX, leastEntropyCellY);
                 return true;
@@ -344,40 +397,87 @@ namespace WFC
             }
         }
 
-        private void PlaceTile(TileVariant variant, int x, int y)
-        {
-            if (variant == null || variant.Tile == null)
+            private void PlaceTile(TileVariant variant, int x, int y)
             {
-                Debug.LogWarning("Trying to place a null tile at (" + x + ", " + y + "). Skipping.");
-                return;
-            }
-
-            if (collapsedTiles != null && collapsedTiles[x, y] != null)
-            {
-                return;
-            }
-
-            Vector3 position = new Vector3(x * tileSize.x, 0f, y * tileSize.y);
-            GameObject instance;
-            #if UNITY_EDITOR
-            instance = PrefabUtility.InstantiatePrefab(variant.Tile.gameObject) as GameObject;
-            #else
-            instance = Instantiate(variant.Tile.gameObject);
-            #endif
-            if (instance != null)
-            {
-                instance.transform.position = transform.position + position;
-                instance.transform.rotation = variant.Tile.transform.rotation * Quaternion.Euler(0f, variant.Rotation * 90f, 0f);
-
-                Transform container = GetOrCreateContainer();
-                instance.transform.SetParent(container, true);
-                if (spawnedTiles != null)
+                if (variant == null || variant.Tile == null)
                 {
-                    spawnedTiles[x, y] = instance;
+                    Debug.LogWarning("Trying to place a null tile at (" + x + ", " + y + "). Skipping.");
+                    return;
                 }
-                collapsedTiles[x, y] = variant;
+
+                if (collapsedTiles != null && collapsedTiles[x, y] != null)
+                {
+                    return;
+                }
+
+                Vector3 position = new Vector3(x * tileSize.x, 0f, y * tileSize.y);
+                GameObject instance;
+                #if UNITY_EDITOR
+                instance = PrefabUtility.InstantiatePrefab(variant.Tile.gameObject) as GameObject;
+                #else
+                instance = Instantiate(variant.Tile.gameObject);
+                #endif
+                if (instance != null)
+                {
+                    instance.transform.position = transform.position + position;
+                    instance.transform.rotation = variant.Tile.transform.rotation * Quaternion.Euler(0f, variant.Rotation * 90f, 0f);
+
+                    Transform container = GetOrCreateContainer();
+                    instance.transform.SetParent(container, true);
+                    if (spawnedTiles != null)
+                    {
+                        spawnedTiles[x, y] = instance;
+                    }
+                    collapsedTiles[x, y] = variant;
+                    ValidateConnectionsAt(x, y);
+                    
+                }
             }
-        }
+
+            private void ValidateConnectionsAt(int x, int y)
+            {
+                if (collapsedTiles == null)
+                {
+                    return;
+                }
+
+                TileVariant center = collapsedTiles[x, y];
+                if (center == null)
+                {
+                    return;
+                }
+
+                ValidateNeighborConnection(center, x, y, x, y - 1, Direction.North);
+                ValidateNeighborConnection(center, x, y, x + 1, y, Direction.East);
+                ValidateNeighborConnection(center, x, y, x, y + 1, Direction.South);
+                ValidateNeighborConnection(center, x, y, x - 1, y, Direction.West);
+            }
+
+            private void ValidateNeighborConnection(TileVariant center, int cx, int cy, int nx, int ny, Direction directionFromCenter)
+            {
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height)
+                {
+                    return;
+                }
+
+                TileVariant neighbor = collapsedTiles[nx, ny];
+                if (neighbor == null)
+                {
+                    return;
+                }
+
+                bool isCompatible = IsCompatibleWith(center, neighbor, directionFromCenter)
+                    && IsCompatibleWith(neighbor, center, DirectionUtils.Opposite(directionFromCenter));
+
+                if (isCompatible)
+                {
+                    Debug.Log($"Tiles connected correctly: ({cx},{cy}) -> ({nx},{ny}) dir={directionFromCenter}");
+                }
+                else
+                {
+                    Debug.LogWarning($"Tiles connected incorrectly: ({cx},{cy}) -> ({nx},{ny}) dir={directionFromCenter}");
+                }
+            }
 
         private void PruneIsolatedTiles()
         {
@@ -458,7 +558,7 @@ namespace WFC
                    && variant.Tile != null
                    && variant.Tile.gameObject == baseTilePrefab;
         }
-        
+
 
 
         #if UNITY_EDITOR
@@ -555,6 +655,7 @@ namespace WFC
 
         private static List<int> GetAllowedRotations(Tile tile)
         {
+            // return new List<int> { 0 };
             if (tile == null)
             {
                 return new List<int> { 0 };
@@ -661,5 +762,35 @@ namespace WFC
             return false;
         }
 
+        private static string FormatVariantDetails(TileVariant variant)
+        {
+            if (variant == null || variant.Tile == null)
+            {
+                return "<null tile variant>";
+            }
+
+            Tile tile = variant.Tile;
+            string allowedRotations = tile.allowedRotationSteps != null && tile.allowedRotationSteps.Count > 0
+                ? string.Join(",", tile.allowedRotationSteps)
+                : "(default)";
+
+            int connectedCount = tile.connectedTiles != null ? tile.connectedTiles.Count : 0;
+            int possibleNorth = variant.PossibleByDirection != null && variant.PossibleByDirection.TryGetValue(Direction.North, out var pn) ? pn.Count : 0;
+            int possibleEast = variant.PossibleByDirection != null && variant.PossibleByDirection.TryGetValue(Direction.East, out var pe) ? pe.Count : 0;
+            int possibleSouth = variant.PossibleByDirection != null && variant.PossibleByDirection.TryGetValue(Direction.South, out var ps) ? ps.Count : 0;
+            int possibleWest = variant.PossibleByDirection != null && variant.PossibleByDirection.TryGetValue(Direction.West, out var pw) ? pw.Count : 0;
+
+            return $"{tile.name} | rotation={variant.Rotation} baseRotation={tile.rotation} | connections={variant.RotatedConnections} | type={tile.tileType} | allowRotationVariants={tile.allowRotationVariants} | allowedRotations={allowedRotations} | connectedTiles={connectedCount} | possibleByDir(N/E/S/W)={possibleNorth}/{possibleEast}/{possibleSouth}/{possibleWest}";
+        }
+
+        private static string FormatVariantSummary(TileVariant variant)
+        {
+            if (variant == null || variant.Tile == null)
+            {
+                return "<null>";
+            }
+
+            return $"{variant.Tile.name} (rotation={variant.Rotation}, connections={variant.RotatedConnections}, type={variant.Tile.tileType})";
+        }
     }
 }
