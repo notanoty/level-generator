@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using WFC;
 using ConnectedTile = WFC.ConnectedTile;
 using Direction = WFC.Direction;
 using Tile = WFC.Tile;
@@ -202,6 +203,9 @@ namespace Editor.WFC
             tile.gridSize = ResolveGridSize(component, data);
             tile.snapPlane = ResolveSnapPlane(component);
 
+            tile.tileType = ParseTileType(component != null ? component.tile_type : null);
+            ApplyTypedConnections(tile, component != null ? component.typed_connections : null);
+
             if (tile.connectedTiles == null)
             {
                 tile.connectedTiles = new List<ConnectedTile>();
@@ -210,6 +214,89 @@ namespace Editor.WFC
             {
                 tile.connectedTiles.Clear();
             }
+        }
+
+        private static TileSurfaceType ParseTileType(string type)
+        {
+            if (string.IsNullOrWhiteSpace(type))
+            {
+                return TileSurfaceType.Default;
+            }
+
+            type = NormalizeTypeString(type);
+            if (Enum.TryParse(type, true, out TileSurfaceType parsed))
+            {
+                return parsed;
+            }
+
+            return TileSurfaceType.Default;
+        }
+
+        private static void ApplyTypedConnections(Tile tile, TypedConnectionData[] typedConnections)
+        {
+            if (tile == null)
+            {
+                return;
+            }
+
+            if (tile.typeConnections == null)
+            {
+                tile.typeConnections = new List<DirectionalTypeConnection>();
+            }
+            else
+            {
+                tile.typeConnections.Clear();
+            }
+
+            if (typedConnections == null || typedConnections.Length == 0)
+            {
+                return;
+            }
+
+            foreach (TypedConnectionData entry in typedConnections)
+            {
+                if (entry == null || string.IsNullOrWhiteSpace(entry.direction))
+                {
+                    continue;
+                }
+
+                if (!Enum.TryParse(entry.direction, true, out Direction direction))
+                {
+                    continue;
+                }
+
+                tile.typeConnections.Add(new DirectionalTypeConnection
+                {
+                    direction = direction,
+                    allowedTypes = ParseConnectionTypeMask(entry.types)
+                });
+            }
+        }
+
+        private static ConnectionTypeMask ParseConnectionTypeMask(string[] types)
+        {
+            if (types == null || types.Length == 0)
+            {
+                return ConnectionTypeMask.All;
+            }
+
+            ConnectionTypeMask result = ConnectionTypeMask.None;
+            foreach (string type in types)
+            {
+                if (string.IsNullOrWhiteSpace(type)) continue;
+                string normalized = NormalizeTypeString(type);
+                if (Enum.TryParse(normalized, true, out ConnectionTypeMask parsed))
+                {
+                    result |= parsed;
+                }
+            }
+
+            return result == ConnectionTypeMask.None ? ConnectionTypeMask.All : result;
+        }
+
+        private static string NormalizeTypeString(string type)
+        {
+            return string.Equals(type, "forrest", StringComparison.OrdinalIgnoreCase) ? "Forest" : type;
         }
 
         private static Direction ResolveConnections(TileDataFile data, TileComponentData component, string tileDataFolder)
@@ -559,13 +646,17 @@ namespace Editor.WFC
             public int[] allowed_rotation_steps;
             public int[] grid_size;
             public string snap_plane;
+            public string tile_type;
+            public TypedConnectionData[] typed_connections;
+        }
+
+        [Serializable]
+        private class TypedConnectionData
+        {
+            public string direction;
+            public string[] types;
         }
 
         #pragma warning restore IDE1006
     }
 }
-
-
-
-
-

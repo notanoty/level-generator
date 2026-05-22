@@ -6,21 +6,11 @@ using UnityEditor;
 
 namespace WFC
 {
-    [System.Serializable]
-    public class ConnectedTile
-    {
-        [Tooltip("The tile that can be connected to this tile.")]
-        public Tile tile;
-
-        [Tooltip("The direction on this tile where the connection is allowed.")]
-        public Direction direction;
-    }
-
     [DisallowMultipleComponent]
     [ExecuteAlways]
     public class Tile : MonoBehaviour
     {
-        [Tooltip("Directional connections for this tile. Use the flags to pick multiple directions.")]
+        [Tooltip("Road connections for this tile. Use the flags to pick multiple directions.")]
         public Direction connections;
 
         [Tooltip("Optional rotation (in 90-degree steps). This rotation is applied to the connection mask when querying.")]
@@ -57,6 +47,13 @@ namespace WFC
         public Dictionary<Direction, List<Tile>> PossibleTilesByDirection = new Dictionary<Direction, List<Tile>>();
 
         public Dictionary<Direction, List<Tile>> ImpossibleTilesByDirection = new Dictionary<Direction, List<Tile>>();
+
+        [Header("Typed Connections")]
+        [Tooltip("The surface/type of this tile. Used when matching typed connections.")]
+        public TileSurfaceType tileType = TileSurfaceType.Default;
+
+        [Tooltip("Allowed neighbor types per direction. Multiple entries and flags are allowed.")]
+        public List<DirectionalTypeConnection> typeConnections = new List<DirectionalTypeConnection>();
 
         /// <summary>
         /// Returns the connections after applying the configured rotation (rotation is in 90-degree clockwise steps).
@@ -102,8 +99,57 @@ namespace WFC
         }
 
         /// <summary>
+        /// Returns the allowed neighbor types after applying the configured rotation.
+        /// </summary>
+        public ConnectionTypeMask GetAllowedTypesForDirection(Direction dir)
+        {
+            return GetAllowedTypesForRotation(dir, rotation);
+        }
+
+        /// <summary>
+        /// Returns the allowed neighbor types after applying the given rotation.
+        /// </summary>
+        public ConnectionTypeMask GetAllowedTypesForRotation(Direction dir, int rotationSteps)
+        {
+            if (typeConnections == null || typeConnections.Count == 0)
+            {
+                return ConnectionTypeMask.All;
+            }
+
+            ConnectionTypeMask result = ConnectionTypeMask.None;
+            bool found = false;
+            foreach (var entry in typeConnections)
+            {
+                if (entry == null) continue;
+                Direction rotatedDir = DirectionUtils.Rotate(entry.direction, rotationSteps);
+                if (!DirectionUtils.Has(rotatedDir, dir)) continue;
+
+                result |= entry.allowedTypes;
+                found = true;
+            }
+
+            return found ? result : ConnectionTypeMask.None;
+        }
+
+        public static ConnectionTypeMask MaskForTileType(TileSurfaceType type)
+        {
+            switch (type)
+            {
+                case TileSurfaceType.Forest:
+                    return ConnectionTypeMask.Forest;
+                case TileSurfaceType.Water:
+                    return ConnectionTypeMask.Water;
+                case TileSurfaceType.Lava:
+                    return ConnectionTypeMask.Lava;
+                case TileSurfaceType.Default:
+                default:
+                    return ConnectionTypeMask.Default;
+            }
+        }
+
+        /// <summary>
         /// Quick check whether this tile is compatible with another tile when this tile faces the given direction.
-        /// A connection is valid if directional sockets match OR there is an explicit connectedTiles rule.
+        /// A connection is valid if directional roads match and type rules match, OR there is an explicit connectedTiles rule.
         /// </summary>
         public bool IsCompatibleWith(Tile other, Direction dir)
         {
@@ -112,8 +158,15 @@ namespace WFC
             Direction thisCon = GetRotatedConnections();
             Direction otherCon = other.GetRotatedConnections();
             bool byDirection = DirectionUtils.Has(thisCon, dir) && DirectionUtils.Has(otherCon, DirectionUtils.Opposite(dir));
+
+            ConnectionTypeMask allowedFromThis = GetAllowedTypesForDirection(dir);
+            ConnectionTypeMask allowedFromOther = other.GetAllowedTypesForDirection(DirectionUtils.Opposite(dir));
+            ConnectionTypeMask otherType = MaskForTileType(other.tileType);
+            ConnectionTypeMask thisType = MaskForTileType(tileType);
+            bool byType = (allowedFromThis & otherType) != 0 && (allowedFromOther & thisType) != 0;
+
             bool byExplicitRule = CanConnectTo(other, dir);
-            return byDirection || byExplicitRule;
+            return byExplicitRule || (byDirection && byType);
         }
 
 
