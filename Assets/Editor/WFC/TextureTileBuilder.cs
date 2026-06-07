@@ -92,6 +92,7 @@ namespace Editor.WFC
 
                 Debug.Log($"Texture found on '{targetTile.name}': {texture.name}");
                 
+                bool[,] processed = new bool[64, 64];
                 int width = texture.width;
                 int height = texture.height;
                 Color32[] pixels = texture.GetPixels32();
@@ -99,10 +100,14 @@ namespace Editor.WFC
                 {
                     for (int y = 0; y < height; y++)
                     {
+                        if(processed[x, y])
+                        {
+                            continue;
+                        }
                         Color32 pixelColor = pixels[(y * width) + x];
                         if (_tilePalette.TryGetPurpose(pixelColor, out string purpose))
                         {
-                            TileBulder.BuildObject(x, y, targetTile, pixelColor, texture);
+                            TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor, texture, _tilePalette, processed);
                             Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{purpose}' in the palette.");
                         }
                         else

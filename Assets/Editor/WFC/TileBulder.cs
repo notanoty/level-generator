@@ -1,13 +1,15 @@
-﻿using UnityEditor;
+﻿using System;
+using UnityEditor;
 using UnityEngine;
+using WFC;
 
 namespace Editor.WFC
 {
     public class TileBulder
     {
-
         public TileBulder(TextureTileBuilder textureTileBuilder)
         {
+            _ = textureTileBuilder;
         }
 
         public void BuildObject(int x, int y, GameObject tile, Color32 pixelColor, Texture2D texture)
@@ -22,7 +24,7 @@ namespace Editor.WFC
             {
                 return;
             }
-            
+
             if (!texture)
             {
                 return;
@@ -31,15 +33,11 @@ namespace Editor.WFC
             Bounds bounds = tileRenderer.bounds;
             float tileWidth = bounds.size.x;
             float tileDepth = bounds.size.z;
-            
+
             float cellWidth = tileWidth / texture.width;
             float cellDepth = tileDepth / texture.height;
 
-            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = $"Pixel_{x}_{y}";
-            cube.transform.SetParent(tile.transform, false);
-            cube.transform.localPosition = new Vector3(x * cellWidth / 10f - tileWidth * 0.5f + cellWidth * 0.05f, 0, y * cellDepth / 10f - tileDepth * 0.5f + cellDepth * 0.05f);
-            cube.transform.localScale = new Vector3(cellWidth / 10f, 1f, cellDepth / 10f);
+            GameObject cube = CreateRectangleCube(tile, x, y, 1, 1, cellWidth, cellDepth, tileWidth, tileDepth);
 
 #if UNITY_EDITOR
             Undo.RegisterCreatedObjectUndo(cube, "Build Pixel Cube");
@@ -59,6 +57,59 @@ namespace Editor.WFC
                 material.color = pixelColor;
                 cubeRenderer.sharedMaterial = material;
             }
+        }
+
+
+        public void BuildObjectOptimized(int x, int y, GameObject tile, Color32 pixelColor, Texture2D texture,
+            TilePalette palette, bool[,] processed)
+        {
+            _ = x;
+            _ = y;
+            _ = palette;
+
+            if (!TryGetOptimizedTextureData(tile, texture, out float tileWidth, out float tileDepth,
+                    out Color32[] pixels, out int width, out int height))
+            {
+                return;
+            }
+
+            if (tileWidth <= 0f || tileDepth <= 0f)
+            {
+                return;
+            }
+
+            const string generatedRootName = "__OptimizedGenerated";
+            if (tile.transform.Find(generatedRootName) != null)
+            {
+                return;
+            }
+
+
+            GetRectangleSize(x, y, processed, pixels, width, height, out int rectangleWidth, out int rectangleHeight);
+
+
+            float cellWidth = tileWidth / width;
+            float cellDepth = tileDepth / height;
+            GameObject cube = CreateRectangleCube(tile, x, y, Math.Max(1, rectangleWidth), Math.Max(1, rectangleHeight),
+                cellWidth, cellDepth, tileWidth, tileDepth);
+
+#if UNITY_EDITOR
+            Undo.RegisterCreatedObjectUndo(cube, "Build Optimized Pixel Cube");
+#endif
+        }
+
+        private static GameObject CreateRectangleCube(GameObject tile, int x, int y, int rectWidth, int rectHeight,
+            float cellWidth, float cellDepth, float tileWidth, float tileDepth)
+        {
+            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = $"Pixel_{x}_{y}";
+            cube.transform.SetParent(tile.transform, false);
+            cube.transform.localPosition = new Vector3(
+                x * cellWidth / 10f - tileWidth * 0.5f + cellWidth * rectWidth * 0.05f,
+                0,
+                y * cellDepth / 10f - tileDepth * 0.5f + cellDepth * rectHeight * 0.05f);
+            cube.transform.localScale = new Vector3(cellWidth * rectWidth / 10f, 1f, cellDepth * rectHeight / 10f);
+            return cube;
         }
 
         public void PersistGeneratedCubeMaterials(GameObject root, string prefabPath)
@@ -93,7 +144,8 @@ namespace Editor.WFC
                 }
 
                 Color c = src.color;
-                string matName = $"Mat_{(int)(c.r * 255f)}_{(int)(c.g * 255f)}_{(int)(c.b * 255f)}_{(int)(c.a * 255f)}.mat";
+                string matName =
+                    $"Mat_{(int)(c.r * 255f)}_{(int)(c.g * 255f)}_{(int)(c.b * 255f)}_{(int)(c.a * 255f)}.mat";
                 string matPath = materialsFolder + "/" + matName;
 
                 Material assetMat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
@@ -130,6 +182,179 @@ namespace Editor.WFC
 
             return Shader.Find("Sprites/Default");
         }
+
+        private static bool TryGetOptimizedTextureData(GameObject tile, Texture2D texture, out float tileWidth,
+            out float tileDepth, out Color32[] pixels, out int width, out int height)
+        {
+            tileWidth = 0f;
+            tileDepth = 0f;
+            pixels = null;
+            width = 0;
+            height = 0;
+
+            if (!tile)
+            {
+                return false;
+            }
+
+            Renderer tileRenderer = tile.GetComponent<Renderer>();
+            if (!tileRenderer)
+            {
+                return false;
+            }
+
+            if (!texture)
+            {
+                return false;
+            }
+
+            Bounds bounds = tileRenderer.bounds;
+            tileWidth = bounds.size.x;
+            tileDepth = bounds.size.z;
+
+            width = texture.width;
+            height = texture.height;
+            if (width <= 0 || height <= 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                pixels = texture.GetPixels32();
+            }
+            catch
+            {
+                return false;
+            }
+
+            return pixels != null && pixels.Length >= width * height;
+        }
+
+        private static void GetRectangleSize(int startX, int startY, bool[,] processed, Color32[] pixels, int width,
+            int height, out int rectangleWidth, out int rectangleHeight)
+        {
+            const int maxLoopIterations = 100;
+
+            rectangleWidth = 0;
+            rectangleHeight = 0;
+
+            if (processed == null || pixels == null)
+            {
+                return;
+            }
+
+            if (startX < 0 || startY < 0 || startX >= width || startY >= height)
+            {
+                return;
+            }
+
+            if (startX >= processed.GetLength(0) || startY >= processed.GetLength(1) || processed[startX, startY])
+            {
+                return;
+            }
+
+            if (!TryGetPixelColor(pixels, width, height, startX, startY, out Color32 originalColor))
+            {
+                return;
+            }
+
+            int maxWidth = Mathf.Min(maxLoopIterations, Mathf.Min(width - startX, processed.GetLength(0) - startX));
+            rectangleWidth = 1;
+            for (int candidateWidth = 2; candidateWidth <= maxWidth; candidateWidth++)
+            {
+                bool canUseWidth = true;
+                for (int xOffset = 0; xOffset < candidateWidth; xOffset++)
+                {
+                    if (!IsCellSameColorAndUnprocessed(processed, pixels, width, height, startX + xOffset, startY,
+                            originalColor))
+                    {
+                        canUseWidth = false;
+                        break;
+                    }
+                }
+
+                if (!canUseWidth)
+                {
+                    break;
+                }
+
+                rectangleWidth = candidateWidth;
+            }
+
+            int maxHeight = Mathf.Min(maxLoopIterations, Mathf.Min(height - startY, processed.GetLength(1) - startY));
+            rectangleHeight = 1;
+            for (int candidateHeight = 2; candidateHeight <= maxHeight; candidateHeight++)
+            {
+                bool canUseHeight = true;
+                int bottomRow = startY + candidateHeight - 1;
+                for (int xOffset = 0; xOffset < rectangleWidth; xOffset++)
+                {
+                    if (!IsCellSameColorAndUnprocessed(processed, pixels, width, height, startX + xOffset, bottomRow,
+                            originalColor))
+                    {
+                        canUseHeight = false;
+                        break;
+                    }
+                }
+
+                if (!canUseHeight)
+                {
+                    break;
+                }
+
+                rectangleHeight = candidateHeight;
+            }
+
+            for (int yOffset = 0; yOffset < rectangleHeight; yOffset++)
+            {
+                for (int xOffset = 0; xOffset < rectangleWidth; xOffset++)
+                {
+                    processed[startX + xOffset, startY + yOffset] = true;
+                }
+            }
+        }
+
+
+        private static bool IsCellSameColorAndUnprocessed(bool[,] processed, Color32[] pixels, int width, int height,
+            int x, int y, Color32 originalColor)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height)
+            {
+                return false;
+            }
+
+            if (x >= processed.GetLength(0) || y >= processed.GetLength(1) || processed[x, y])
+            {
+                return false;
+            }
+
+            return TryGetPixelColor(pixels, width, height, x, y, out Color32 currentColor)
+                   && currentColor.r == originalColor.r
+                   && currentColor.g == originalColor.g
+                   && currentColor.b == originalColor.b
+                   && currentColor.a == originalColor.a;
+        }
+
+        private static bool TryGetPixelColor(Color32[] pixels, int width, int height, int x, int y, out Color32 color)
+        {
+            color = default;
+
+            if (x < 0 || y < 0 || x >= width || y >= height)
+            {
+                return false;
+            }
+
+            int index = y * width + x;
+            if (index < 0 || index >= pixels.Length)
+            {
+                return false;
+            }
+
+            color = pixels[index];
+            return true;
+        }
+
 
         private static void EnsureFolder(string fullFolder)
         {
