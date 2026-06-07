@@ -43,20 +43,7 @@ namespace Editor.WFC
             Undo.RegisterCreatedObjectUndo(cube, "Build Pixel Cube");
 #endif
 
-            Renderer cubeRenderer = cube.GetComponent<Renderer>();
-            if (cubeRenderer)
-            {
-                Shader shader = ResolveSupportedShader();
-                if (!shader)
-                {
-                    Debug.LogWarning("No supported shader found for generated cube material.");
-                    return;
-                }
-
-                Material material = new Material(shader);
-                material.color = pixelColor;
-                cubeRenderer.sharedMaterial = material;
-            }
+            FixShader(pixelColor, cube);
         }
 
 
@@ -96,6 +83,26 @@ namespace Editor.WFC
 #if UNITY_EDITOR
             Undo.RegisterCreatedObjectUndo(cube, "Build Optimized Pixel Cube");
 #endif
+            
+            FixShader(pixelColor, cube);
+        }
+
+        private static void FixShader(Color32 pixelColor, GameObject cube)
+        {
+            Renderer cubeRenderer = cube.GetComponent<Renderer>();
+            if (cubeRenderer)
+            {
+                Shader shader = ResolveSupportedShader();
+                if (!shader)
+                {
+                    Debug.LogWarning("No supported shader found for generated cube material.");
+                    return;
+                }
+
+                Material material = new Material(shader);
+                material.color = pixelColor;
+                cubeRenderer.sharedMaterial = material;
+            }
         }
 
         private static GameObject CreateRectangleCube(GameObject tile, int x, int y, int rectWidth, int rectHeight,
@@ -105,9 +112,9 @@ namespace Editor.WFC
             cube.name = $"Pixel_{x}_{y}";
             cube.transform.SetParent(tile.transform, false);
             cube.transform.localPosition = new Vector3(
-                x * cellWidth / 10f - tileWidth * 0.5f + cellWidth * rectWidth * 0.05f,
+                x * cellWidth / 10f - tileWidth * 0.5f + cellWidth * rectWidth * 0.05f + 45,
                 0,
-                y * cellDepth / 10f - tileDepth * 0.5f + cellDepth * rectHeight * 0.05f);
+                y * cellDepth / 10f - tileDepth * 0.5f + cellDepth * rectHeight * 0.05f + 45);
             cube.transform.localScale = new Vector3(cellWidth * rectWidth / 10f, 1f, cellDepth * rectHeight / 10f);
             return cube;
         }
