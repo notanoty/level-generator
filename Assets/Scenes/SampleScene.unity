@@ -5459,6 +5459,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Tile01_2
       objectReference: {fileID: 0}
+    - target: {fileID: 7391164036412864415, guid: 4f18f12c361370c44b0fdfa4ef9e3448, type: 3}
+      propertyPath: connections
+      value: -1
+      objectReference: {fileID: 0}
     - target: {fileID: 8739228908449030576, guid: 4f18f12c361370c44b0fdfa4ef9e3448, type: 3}
       propertyPath: m_LocalPosition.x
       value: 1022.56903
@@ -12421,6 +12425,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Tile01_2
       objectReference: {fileID: 0}
+    - target: {fileID: 7391164036412864415, guid: 4f18f12c361370c44b0fdfa4ef9e3448, type: 3}
+      propertyPath: connections
+      value: -1
+      objectReference: {fileID: 0}
     - target: {fileID: 8739228908449030576, guid: 4f18f12c361370c44b0fdfa4ef9e3448, type: 3}
       propertyPath: m_LocalScale.x
       value: 9.999999
@@ -17544,6 +17552,10 @@ PrefabInstance:
     - target: {fileID: 777055533092372596, guid: 4f18f12c361370c44b0fdfa4ef9e3448, type: 3}
       propertyPath: m_Name
       value: Tile01_2
+      objectReference: {fileID: 0}
+    - target: {fileID: 7391164036412864415, guid: 4f18f12c361370c44b0fdfa4ef9e3448, type: 3}
+      propertyPath: connections
+      value: -1
       objectReference: {fileID: 0}
     - target: {fileID: 8739228908449030576, guid: 4f18f12c361370c44b0fdfa4ef9e3448, type: 3}
       propertyPath: m_LocalPosition.x

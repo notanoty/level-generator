@@ -55,34 +55,21 @@ namespace WFC
         [Tooltip("Allowed neighbor types per direction. Multiple entries and flags are allowed.")]
         public List<DirectionalTypeConnection> typeConnections = new List<DirectionalTypeConnection>();
 
-        /// <summary>
-        /// Returns the connections after applying the configured rotation (rotation is in 90-degree clockwise steps).
-        /// </summary>
         public Direction GetRotatedConnections()
         {
             return GetConnectionsForRotation(rotation);
         }
 
-        /// <summary>
-        /// Returns the connections after applying the given rotation (rotation is in 90-degree clockwise steps).
-        /// </summary>
         public Direction GetConnectionsForRotation(int rotationSteps)
         {
             return DirectionUtils.Rotate(connections, rotationSteps);
         }
 
-        /// <summary>
-        /// True if this tile (with its rotation) has the given direction bit(s).
-        /// </summary>
         public bool ConnectsTo(Direction dir)
         {
             return DirectionUtils.Has(GetRotatedConnections(), dir);
         }
 
-        /// <summary>
-        /// True if this tile explicitly allows connecting to the given tile in the given direction.
-        /// If the list is empty, there is no explicit rule.
-        /// </summary>
         public bool CanConnectTo(Tile other, Direction dir)
         {
             if (other == null) return false;
@@ -98,17 +85,11 @@ namespace WFC
             return false;
         }
 
-        /// <summary>
-        /// Returns the allowed neighbor types after applying the configured rotation.
-        /// </summary>
         public ConnectionTypeMask GetAllowedTypesForDirection(Direction dir)
         {
             return GetAllowedTypesForRotation(dir, rotation);
         }
 
-        /// <summary>
-        /// Returns the allowed neighbor types after applying the given rotation.
-        /// </summary>
         public ConnectionTypeMask GetAllowedTypesForRotation(Direction dir, int rotationSteps)
         {
             if (typeConnections == null || typeConnections.Count == 0)
@@ -147,10 +128,6 @@ namespace WFC
             }
         }
 
-        /// <summary>
-        /// Quick check whether this tile is compatible with another tile when this tile faces the given direction.
-        /// A connection is valid if directional roads match and type rules match, OR there is an explicit connectedTiles rule.
-        /// </summary>
         public bool IsCompatibleWith(Tile other, Direction dir)
         {
             if (other == null) return false;

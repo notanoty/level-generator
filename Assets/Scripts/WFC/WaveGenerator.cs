@@ -78,8 +78,7 @@ namespace WFC
             
             SetStartTile();
 
-            int maxSteps = width * height;
-            for (int i = 0; i < maxSteps; i++)
+            for (int i = 0; i < 1; i++)
             {
                 if (!HandleWaveFunctionCollapse())
                 {
@@ -87,10 +86,54 @@ namespace WFC
                 }
             }
 
-            // PruneIsolatedTiles();
+            LogTilePossibilities();
+            PruneIsolatedTiles();
         #endif
         }
 
+        public void LogTilePossibilities()
+        {
+#if UNITY_EDITOR
+            if ((tilePrefabs == null || tilePrefabs.Count == 0))
+            {
+                RefreshTilePrefabs();
+            }
+#endif
+            if (tilePrefabs == null || tilePrefabs.Count == 0)
+            {
+                Debug.LogWarning("No tile prefabs to log. Generate once or ensure prefabs are loaded.");
+                return;
+            }
+
+            StringBuilder sb = new StringBuilder(2048);
+            sb.AppendLine($"Tiles: {tilePrefabs.Count}");
+            for (int i = 0; i < tilePrefabs.Count; i++)
+            {
+                Tile tile = tilePrefabs[i];
+                sb.AppendLine($"[{i}] {FormatTileDetails(tile)}");
+            }
+
+            if (tilePossibilities != null)
+            {
+                sb.AppendLine("Grid possibilities:");
+                for (int x = 0; x < width; x++)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        List<Tile> cell = tilePossibilities[x, y];
+                        int count = cell != null ? cell.Count : 0;
+                        sb.AppendLine($"Cell ({x},{y}) count={count}");
+                        if (cell == null) continue;
+                        for (int i = 0; i < cell.Count; i++)
+                        {
+                            sb.AppendLine($"  - {FormatTileSummary(cell[i])}");
+                        }
+                    }
+                }
+            }
+
+            Debug.Log(sb.ToString());
+        }
 
         private void FillTilePossibilitiesArray()
         {
@@ -145,7 +188,25 @@ namespace WFC
                 tile.PossibleTilesByDirection.Clear();
                 tile.ImpossibleTilesByDirection.Clear();
 
-                tile.CalculatePossibleTiles(tilePrefabs);
+                foreach (Direction direction in CardinalDirections)
+                {
+                    tile.PossibleTilesByDirection[direction] = new List<Tile>();
+                    tile.ImpossibleTilesByDirection[direction] = new List<Tile>();
+
+                    foreach (Tile other in tilePrefabs)
+                    {
+                        bool isCompatible = IsCompatibleWith(tile, other, direction);
+
+                        if (isCompatible)
+                        {
+                            tile.PossibleTilesByDirection[direction].Add(other);
+                        }
+                        else
+                        {
+                            tile.ImpossibleTilesByDirection[direction].Add(other);
+                        }
+                    }
+                }
             }
         }
 
@@ -174,6 +235,7 @@ namespace WFC
         // ReSharper disable Unity.PerformanceAnalysis
         private Tile Collapse(int x, int y)
         {
+            // ConstrainCellToCollapsedNeighbors(x, y);
             List<Tile> selectedPossibilities = tilePossibilities[x, y];
             if (selectedPossibilities == null || selectedPossibilities.Count == 0)
             {
@@ -235,6 +297,7 @@ namespace WFC
                         continue;
                     }
 
+                    ConstrainCellToCollapsedNeighbors(x, y);
                     List<Tile> cell = tilePossibilities[x, y];
 
                     int cellCount = cell.Count;
@@ -276,6 +339,45 @@ namespace WFC
             return false;
         }
 
+        private void ConstrainCellToCollapsedNeighbors(int x, int y)
+        {
+            if (tilePossibilities == null || collapsedTiles == null)
+            {
+                return;
+            }
+
+            List<Tile> candidates = tilePossibilities[x, y];
+            if (candidates == null || candidates.Count == 0)
+            {
+                return;
+            }
+
+            // Remove any tiles that would not match already-collapsed neighbors.
+            if (y - 1 >= 0 && collapsedTiles[x, y - 1] != null)
+            {
+                Tile neighbor = collapsedTiles[x, y - 1];
+                candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.North));
+            }
+
+            if (y + 1 < height && collapsedTiles[x, y + 1] != null)
+            {
+                Tile neighbor = collapsedTiles[x, y + 1];
+                candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.South));
+            }
+
+            if (x - 1 >= 0 && collapsedTiles[x - 1, y] != null)
+            {
+                Tile neighbor = collapsedTiles[x - 1, y];
+                candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.West));
+            }
+
+            if (x + 1 < width && collapsedTiles[x + 1, y] != null)
+            {
+                Tile neighbor = collapsedTiles[x + 1, y];
+                candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.East));
+            }
+        }
+
         private void PlaceTile(Tile tile, int x, int y)
         {
             if (tile == null)
@@ -297,11 +399,11 @@ namespace WFC
 
             Vector3 position = new Vector3(x * tileSize.x, 0f, y * tileSize.y);
             GameObject instance;
-            
             #if UNITY_EDITOR
             instance = PrefabUtility.InstantiatePrefab(tile.gameObject) as GameObject;
+            #else
+            instance = Instantiate(tile.gameObject);
             #endif
-            
             if (instance != null)
             {
                 instance.transform.position = transform.position + position;
@@ -314,6 +416,53 @@ namespace WFC
                     spawnedTiles[x, y] = instance;
                 }
                 collapsedTiles[x, y] = tile;
+                ValidateConnectionsAt(x, y);
+                
+            }
+        }
+
+        private void ValidateConnectionsAt(int x, int y)
+        {
+            if (collapsedTiles == null)
+            {
+                return;
+            }
+
+            Tile center = collapsedTiles[x, y];
+            if (center == null)
+            {
+                return;
+            }
+
+            ValidateNeighborConnection(center, x, y, x, y - 1, Direction.North);
+            ValidateNeighborConnection(center, x, y, x + 1, y, Direction.East);
+            ValidateNeighborConnection(center, x, y, x, y + 1, Direction.South);
+            ValidateNeighborConnection(center, x, y, x - 1, y, Direction.West);
+        }
+
+        private void ValidateNeighborConnection(Tile center, int cx, int cy, int nx, int ny, Direction directionFromCenter)
+        {
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height)
+            {
+                return;
+            }
+
+            Tile neighbor = collapsedTiles[nx, ny];
+            if (neighbor == null)
+            {
+                return;
+            }
+
+            bool isCompatible = IsCompatibleWith(center, neighbor, directionFromCenter)
+                && IsCompatibleWith(neighbor, center, DirectionUtils.Opposite(directionFromCenter));
+
+            if (isCompatible)
+            {
+                Debug.Log($"Tiles connected correctly: ({cx},{cy}) -> ({nx},{ny}) dir={directionFromCenter}");
+            }
+            else
+            {
+                Debug.LogWarning($"Tiles connected incorrectly: ({cx},{cy}) -> ({nx},{ny}) dir={directionFromCenter}");
             }
         }
 
@@ -373,6 +522,8 @@ namespace WFC
             {
 #if UNITY_EDITOR
                 Undo.DestroyObjectImmediate(instance);
+#else
+                DestroyImmediate(instance);
 #endif
             }
 
@@ -445,6 +596,99 @@ namespace WFC
             }
 
             return container;
+        }
+
+        private static readonly Direction[] CardinalDirections =
+        {
+            Direction.North,
+            Direction.East,
+            Direction.South,
+            Direction.West
+        };
+
+        private static bool IsCompatibleWith(Tile tile, Tile other, Direction direction)
+        {
+            if (tile == null || other == null)
+            {
+                return false;
+            }
+
+            Direction thisCon = tile.connections;
+            Direction otherCon = other.connections;
+            bool thisHas = DirectionUtils.Has(thisCon, direction);
+            bool otherHas = DirectionUtils.Has(otherCon, DirectionUtils.Opposite(direction));
+
+            if (thisHas != otherHas)
+            {
+                return false;
+            }
+
+            if (!thisHas && !otherHas)
+            {
+                return true;
+            }
+
+            bool byType = IsTypeCompatible(tile, other, direction);
+            bool byExplicitRule = HasExplicitConnection(tile, other, direction)
+                                  && HasExplicitConnection(other, tile, DirectionUtils.Opposite(direction));
+            return byExplicitRule || byType;
+        }
+
+        private static bool IsTypeCompatible(Tile tile, Tile other, Direction direction)
+        {
+            ConnectionTypeMask allowedFromThis = tile.GetAllowedTypesForDirection(direction);
+            ConnectionTypeMask allowedFromOther = other.GetAllowedTypesForDirection(DirectionUtils.Opposite(direction));
+            ConnectionTypeMask otherType = Tile.MaskForTileType(other.tileType);
+            ConnectionTypeMask thisType = Tile.MaskForTileType(tile.tileType);
+            return (allowedFromThis & otherType) != 0 && (allowedFromOther & thisType) != 0;
+        }
+
+        private static bool HasExplicitConnection(Tile tile, Tile other, Direction direction)
+        {
+            List<ConnectedTile> connectedTiles = tile.connectedTiles;
+            if (connectedTiles == null || connectedTiles.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var connection in connectedTiles)
+            {
+                if (connection == null || connection.tile == null) continue;
+                if (connection.tile != other) continue;
+
+                if (DirectionUtils.Has(connection.direction, direction))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string FormatTileDetails(Tile tile)
+        {
+            if (tile == null)
+            {
+                return "<null tile>";
+            }
+
+            int connectedCount = tile.connectedTiles != null ? tile.connectedTiles.Count : 0;
+            int possibleNorth = tile.PossibleTilesByDirection != null && tile.PossibleTilesByDirection.TryGetValue(Direction.North, out var pn) ? pn.Count : 0;
+            int possibleEast = tile.PossibleTilesByDirection != null && tile.PossibleTilesByDirection.TryGetValue(Direction.East, out var pe) ? pe.Count : 0;
+            int possibleSouth = tile.PossibleTilesByDirection != null && tile.PossibleTilesByDirection.TryGetValue(Direction.South, out var ps) ? ps.Count : 0;
+            int possibleWest = tile.PossibleTilesByDirection != null && tile.PossibleTilesByDirection.TryGetValue(Direction.West, out var pw) ? pw.Count : 0;
+
+            return $"{tile.name} | connections={tile.connections} | type={tile.tileType} | connectedTiles={connectedCount} | possibleByDir(N/E/S/W)={possibleNorth}/{possibleEast}/{possibleSouth}/{possibleWest}";
+        }
+
+        private static string FormatTileSummary(Tile tile)
+        {
+            if (tile == null)
+            {
+                return "<null>";
+            }
+
+            return $"{tile.name} (connections={tile.connections}, type={tile.tileType})";
         }
     }
 }
