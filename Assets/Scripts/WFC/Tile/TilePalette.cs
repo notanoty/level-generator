@@ -26,17 +26,19 @@ namespace WFC
         private readonly string _defaultId;
         private readonly List<TilePaletteEntry> _entries;
         private readonly Dictionary<string, TilePaletteEntry> _entriesById;
+        private readonly Dictionary<string, TilePaletteEntry> _entriesByPurpose;
         private readonly Dictionary<int, TilePaletteEntry> _entriesByColor;
 
         public string DefaultId => _defaultId;
         public IReadOnlyList<TilePaletteEntry> Entries => _entries;
         public TilePaletteEntry DefaultEntry => TryGet(DefaultId, out TilePaletteEntry entry) ? entry : null;
 
-        private TilePalette(string defaultId, List<TilePaletteEntry> entries, Dictionary<string, TilePaletteEntry> entriesById, Dictionary<int, TilePaletteEntry> entriesByColor)
+        private TilePalette(string defaultId, List<TilePaletteEntry> entries, Dictionary<string, TilePaletteEntry> entriesById, Dictionary<string, TilePaletteEntry> entriesByPurpose, Dictionary<int, TilePaletteEntry> entriesByColor)
         {
             _defaultId = defaultId;
             _entries = entries;
             _entriesById = entriesById;
+            _entriesByPurpose = entriesByPurpose;
             _entriesByColor = entriesByColor;
         }
 
@@ -147,6 +149,36 @@ namespace WFC
             return false;
         }
 
+        public bool TryGetByPurpose(string purpose, out TilePaletteEntry entry)
+        {
+            entry = null;
+            if (string.IsNullOrWhiteSpace(purpose))
+            {
+                return false;
+            }
+
+            return _entriesByPurpose.TryGetValue(purpose.Trim(), out entry);
+        }
+
+        public bool TryGetColorByPurpose(string purpose, out Color32 color)
+        {
+            if (TryGetByPurpose(purpose, out TilePaletteEntry entry))
+            {
+                color = entry.Color;
+                return true;
+            }
+
+            color = default;
+            return false;
+        }
+
+        public Color32 GetColorByPurpose(string purpose)
+        {
+            return TryGetColorByPurpose(purpose, out Color32 color)
+                ? color
+                : throw new KeyNotFoundException($"Palette purpose not found: {purpose}");
+        }
+
         public bool TryGet(Color32 color, out TilePaletteEntry entry)
         {
             return _entriesByColor.TryGetValue(PackColor(color), out entry);
@@ -185,6 +217,7 @@ namespace WFC
 
             var entries = new List<TilePaletteEntry>(paletteFile.colors.Length);
             var entriesById = new Dictionary<string, TilePaletteEntry>(StringComparer.OrdinalIgnoreCase);
+            var entriesByPurpose = new Dictionary<string, TilePaletteEntry>(StringComparer.OrdinalIgnoreCase);
             var entriesByColor = new Dictionary<int, TilePaletteEntry>();
 
             foreach (PaletteColorFile colorFile in paletteFile.colors)
@@ -206,6 +239,11 @@ namespace WFC
                 }
 
                 string purpose = string.IsNullOrWhiteSpace(colorFile.purpose) ? id : colorFile.purpose.Trim();
+                if (entriesByPurpose.ContainsKey(purpose))
+                {
+                    throw new FormatException($"Duplicate palette purpose found: {purpose}");
+                }
+
                 Color32 color = ParseColor(colorFile.rgba, id);
                 int packedColor = PackColor(color);
                 if (entriesByColor.ContainsKey(packedColor))
@@ -216,6 +254,7 @@ namespace WFC
                 TilePaletteEntry entry = new TilePaletteEntry(id, purpose, color);
                 entries.Add(entry);
                 entriesById.Add(id, entry);
+                entriesByPurpose.Add(purpose, entry);
                 entriesByColor.Add(packedColor, entry);
             }
 
@@ -230,7 +269,7 @@ namespace WFC
                 throw new FormatException($"Default palette id '{defaultId}' is not defined in the colors array.");
             }
 
-            return new TilePalette(defaultId, entries, entriesById, entriesByColor);
+            return new TilePalette(defaultId, entries, entriesById, entriesByPurpose, entriesByColor);
         }
 
         private static Color32 ParseColor(int[] rgba, string id)
