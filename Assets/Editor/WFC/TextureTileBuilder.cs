@@ -8,6 +8,17 @@ namespace Editor.WFC
     {
         private GameObject _tileForOne;
         private TilePalette _tilePalette;
+        private readonly TileBulder _tileBulder;
+
+        public TextureTileBuilder()
+        {
+            _tileBulder = new TileBulder(this);
+        }
+
+        public TileBulder TileBulder
+        {
+            get { return _tileBulder; }
+        }
 
         [MenuItem("Tools/WFC/Texture Tile Builder")]
         public static void ShowWindow()
@@ -54,94 +65,135 @@ namespace Editor.WFC
                 return;
             }
 
-            Texture2D texture = GetTexture(tile);
+            // Check if it's a prefab asset
+            string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(tile);
+            GameObject targetTile = tile;
 
-            if (texture == null)
+            if (string.IsNullOrEmpty(prefabPath))
             {
-                Debug.LogWarning($"No texture found on material for '{tile.name}'.");
-                return;
+                // Not a prefab asset, use as is
+                prefabPath = null;
+            }
+            else
+            {
+                // Load prefab for editing
+                targetTile = PrefabUtility.LoadPrefabContents(prefabPath);
             }
 
-            Debug.Log($"Texture found on '{tile.name}': {texture.name}");
-            
-            int width = texture.width;
-            int height = texture.height;
-            Color32[] pixels = texture.GetPixels32();
-            for (int x = 0; x < width; x++)
+            try
             {
-                for (int y = 0; y < height; y++)
+                Texture2D texture = GetTexture(targetTile);
+
+                if (texture == null)
                 {
-                    Color32 pixelColor = pixels[(y * width) + x];
-                    if (_tilePalette.TryGetPurpose(pixelColor, out string purpose))
+                    Debug.LogWarning($"No texture found on material for '{targetTile.name}'.");
+                    return;
+                }
+
+                Debug.Log($"Texture found on '{targetTile.name}': {texture.name}");
+                
+                int width = texture.width;
+                int height = texture.height;
+                Color32[] pixels = texture.GetPixels32();
+                for (int x = 0; x < width; x++)
+                {
+                    for (int y = 0; y < height; y++)
                     {
-                        BuildObject(x, y, tile, pixelColor);
-                        Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{purpose}' in the palette.");
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"Pixel at ({x}, {y}) has color {pixelColor} which does not correspond to any purpose in the palette.");
+                        Color32 pixelColor = pixels[(y * width) + x];
+                        if (_tilePalette.TryGetPurpose(pixelColor, out string purpose))
+                        {
+                            TileBulder.BuildObject(x, y, targetTile, pixelColor, texture);
+                            Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{purpose}' in the palette.");
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Pixel at ({x}, {y}) has color {pixelColor} which does not correspond to any purpose in the palette.");
+                        }
                     }
                 }
+
+                if (!string.IsNullOrEmpty(prefabPath))
+                {
+                    TileBulder.PersistGeneratedCubeMaterials(targetTile, prefabPath);
+                    PrefabUtility.SaveAsPrefabAsset(targetTile, prefabPath);
+                    AssetDatabase.SaveAssets();
+                    Debug.Log($"Saved prefab to {prefabPath}");
+                }
             }
-            
+            finally
+            {
+                // Unload prefab if it was loaded
+                if (!string.IsNullOrEmpty(prefabPath))
+                {
+                    PrefabUtility.UnloadPrefabContents(targetTile);
+                }
+            }
         }
 
 
         
         private void Clear()
         {
-        }
-
-        private void BuildObject(int x, int y, GameObject tile, Color32 pixelColor)
-        {
-            if (tile == null)
+            if (_tileForOne != null)
             {
-                return;
-            }
-
-            Renderer tileRenderer = tile.GetComponent<Renderer>();
-            if (tileRenderer == null)
-            {
-                return;
-            }
-
-            Texture2D texture = GetTexture(tile);
-            if (texture == null)
-            {
-                return;
-            }
-
-            Bounds bounds = tileRenderer.bounds;
-            float tileWidth = bounds.size.x;
-            float tileDepth = bounds.size.z;
-            
-            float cellWidth = tileWidth / texture.width;
-            float cellDepth = tileDepth / texture.height;
-
-            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = $"Pixel_{x}_{y}";
-            cube.transform.SetParent(tile.transform, false);
-            cube.transform.localPosition = new Vector3(x * cellWidth / 10f - tileWidth * 0.5f + cellWidth * 0.05f, 0, y * cellDepth / 10f - tileDepth * 0.5f + cellDepth * 0.05f);
-            cube.transform.localScale = new Vector3(cellWidth / 10f, 0.1f, cellDepth / 10f);
-
-#if UNITY_EDITOR
-            Undo.RegisterCreatedObjectUndo(cube, "Build Pixel Cube");
-#endif
-
-            Renderer cubeRenderer = cube.GetComponent<Renderer>();
-            if (cubeRenderer != null)
-            {
-                Material material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-                if (material.shader == null)
+                // Clear selected prefab only
+                string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(_tileForOne);
+                if (!string.IsNullOrEmpty(prefabPath))
                 {
-                    material = new Material(Shader.Find("Standard"));
+                    GameObject prefab = PrefabUtility.LoadPrefabContents(prefabPath);
+                    try
+                    {
+                        Transform[] children = prefab.GetComponentsInChildren<Transform>();
+                        for (int i = children.Length - 1; i >= 0; i--)
+                        {
+                            if (children[i] != prefab.transform)
+                            {
+                                DestroyImmediate(children[i].gameObject);
+                            }
+                        }
+                        PrefabUtility.SaveAsPrefabAsset(prefab, prefabPath);
+                        Debug.Log($"Cleared prefab {prefabPath}");
+                    }
+                    finally
+                    {
+                        PrefabUtility.UnloadPrefabContents(prefab);
+                    }
+                }
+            }
+            else
+            {
+                // Clear all prefabs in Generated folder
+                string generatedFolder = "Assets/Prefabs/Tiles/Generated";
+                string[] prefabGUIDs = AssetDatabase.FindAssets("t:Prefab", new[] { generatedFolder });
+
+                foreach (string guid in prefabGUIDs)
+                {
+                    string prefabPath = AssetDatabase.GUIDToAssetPath(guid);
+                    GameObject prefab = PrefabUtility.LoadPrefabContents(prefabPath);
+                    try
+                    {
+                        Transform[] children = prefab.GetComponentsInChildren<Transform>();
+                        for (int i = children.Length - 1; i >= 0; i--)
+                        {
+                            if (children[i] != prefab.transform)
+                            {
+                                DestroyImmediate(children[i].gameObject);
+                            }
+                        }
+                        PrefabUtility.SaveAsPrefabAsset(prefab, prefabPath);
+                    }
+                    finally
+                    {
+                        PrefabUtility.UnloadPrefabContents(prefab);
+                    }
                 }
 
-                material.color = pixelColor;
-                cubeRenderer.sharedMaterial = material;
+                AssetDatabase.Refresh();
+                Debug.Log($"Cleared all prefabs in {generatedFolder}");
             }
         }
-        
+
+
         private Texture2D GetTexture(GameObject tile)
         {
             if (tile == null)
