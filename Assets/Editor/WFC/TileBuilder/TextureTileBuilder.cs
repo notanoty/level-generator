@@ -28,10 +28,7 @@ namespace Editor.WFC
 
         private void OnGUI()
         {
-            if (_tilePalette == null)
-            {
-                _tilePalette = TilePalette.LoadDefault();
-            }
+
 
             EditorGUILayout.LabelField("Texture Tile Builder", EditorStyles.boldLabel);
             EditorGUILayout.Space();
@@ -59,6 +56,8 @@ namespace Editor.WFC
 
         private void GenerateOne(GameObject tile)
         {
+            _tilePalette = TilePalette.LoadDefault();
+            
             if (tile == null)
             {
                 Debug.LogWarning("Please assign a GameObject before generating one tile.");
@@ -104,6 +103,7 @@ namespace Editor.WFC
                         {
                             continue;
                         }
+                        
                         Color32 pixelColor = pixels[(y * width) + x];
                         if (_tilePalette.TryGetPurpose(pixelColor, out string purpose))
                         {

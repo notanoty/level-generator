@@ -54,6 +54,9 @@ namespace WFC
 
         [Tooltip("Allowed neighbor types per direction. Multiple entries and flags are allowed.")]
         public List<DirectionalTypeConnection> typeConnections = new List<DirectionalTypeConnection>();
+        
+        [Tooltip("Object texture for later reference")]
+        public Texture2D texture;
 
         public Direction GetRotatedConnections()
         {

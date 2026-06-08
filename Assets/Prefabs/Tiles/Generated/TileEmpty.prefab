@@ -54,7 +54,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: connections
-      value: -1
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: allowedRotationSteps.Array.size

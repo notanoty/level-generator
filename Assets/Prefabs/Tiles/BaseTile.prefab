@@ -136,3 +136,5 @@ MonoBehaviour:
   snapInEditor: 1
   snapInPlayMode: 0
   snapThreshold: 0.001
+  tileType: 0
+  typeConnections: []

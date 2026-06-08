@@ -112,6 +112,7 @@ namespace Editor.WFC
             string prefabName = GetPrefabName(tileDataFolder);
             string prefabPath = $"{GeneratedPrefabRoot}/{prefabName}.prefab";
 
+            EnsureTextureReadable(texturePath);
             Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (texture == null)
             {
@@ -519,6 +520,34 @@ namespace Editor.WFC
 
             AssetDatabase.CreateAsset(generated, materialPath);
             return generated;
+        }
+
+        private static void EnsureTextureReadable(string texturePath)
+        {
+            TextureImporter importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;
+            if (importer == null)
+            {
+                return;
+            }
+
+            bool needsReimport = false;
+
+            if (!importer.isReadable)
+            {
+                importer.isReadable = true;
+                needsReimport = true;
+            }
+
+            if (importer.filterMode != FilterMode.Point)
+            {
+                importer.filterMode = FilterMode.Point;
+                needsReimport = true;
+            }
+
+            if (needsReimport)
+            {
+                importer.SaveAndReimport();
+            }
         }
 
         private static string SanitizeAssetName(string value)

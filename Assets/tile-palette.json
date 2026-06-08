@@ -25,6 +25,11 @@
       "id": "tree",
       "purpose": "Tree",
       "rgba": [120, 72, 32, 255]
+    },
+    {
+      "id": "wall",
+      "purpose": "Wall",
+      "rgba": [90, 90, 90, 255]
     }
   ]
 }
