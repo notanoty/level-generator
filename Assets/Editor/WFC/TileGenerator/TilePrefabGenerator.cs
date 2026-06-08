@@ -60,9 +60,10 @@ namespace Editor.WFC
                         continue;
                     }
 
-                    if (GenerateTilePrefab(assetFolder))
+                    int generatedVariants = GenerateTilePrefabs(assetFolder);
+                    if (generatedVariants > 0)
                     {
-                        generatedCount++;
+                        generatedCount += generatedVariants;
                     }
                     else
                     {
@@ -80,7 +81,7 @@ namespace Editor.WFC
             Debug.Log($"Tile prefab generation complete. Generated: {generatedCount}, skipped: {skippedCount}.");
         }
 
-        private static bool GenerateTilePrefab(string tileDataFolder)
+        private static int GenerateTilePrefabs(string tileDataFolder)
         {
             string jsonPath = Path.Combine(tileDataFolder, "tile.json").Replace('\\', '/');
             string texturePath = Path.Combine(tileDataFolder, "tile.png").Replace('\\', '/');
@@ -88,7 +89,7 @@ namespace Editor.WFC
             if (!File.Exists(AssetPathToAbsolute(jsonPath)) || !File.Exists(AssetPathToAbsolute(texturePath)))
             {
                 Debug.LogWarning($"Skipping {tileDataFolder}: expected tile.json and tile.png.");
-                return false;
+                return 0;
             }
 
             TileDataFile data;
@@ -100,77 +101,92 @@ namespace Editor.WFC
             catch (Exception ex)
             {
                 Debug.LogWarning($"Skipping {tileDataFolder}: failed to read tile.json. {ex.Message}");
-                return false;
+                return 0;
             }
 
             if (data == null)
             {
                 Debug.LogWarning($"Skipping {tileDataFolder}: tile.json could not be parsed.");
-                return false;
+                return 0;
             }
 
             string prefabName = GetPrefabName(tileDataFolder);
-            string prefabPath = $"{GeneratedPrefabRoot}/{prefabName}.prefab";
 
             EnsureTextureReadable(texturePath);
             Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (texture == null)
             {
-                Debug.LogWarning($"Tile texture could not be loaded at {texturePath}. The prefab will still be created, but the Tile component will have no texture assigned.");
+                Debug.LogWarning($"Tile texture could not be loaded at {texturePath}. The prefab variants will still be created, but the Tile component will have no texture assigned.");
             }
 
-            GameObject prefabContents = null;
-            try
+            GameObject basePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(BasePrefabPath);
+            if (basePrefab == null)
             {
-                GameObject basePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(BasePrefabPath);
-                if (basePrefab == null)
-                {
-                    Debug.LogError($"Could not load base prefab at {BasePrefabPath}.");
-                    return false;
-                }
-
-                prefabContents = PrefabUtility.InstantiatePrefab(basePrefab) as GameObject;
-                if (prefabContents == null)
-                {
-                    Debug.LogError($"Could not instantiate base prefab at {BasePrefabPath}.");
-                    return false;
-                }
-
-                prefabContents.name = prefabName;
-                prefabContents.tag = "Untagged";
-
-                Tile tile = prefabContents.GetComponent<Tile>();
-                if (tile == null)
-                {
-                    Debug.LogError($"Base prefab at {BasePrefabPath} does not contain a WFC.Tile component.");
-                    return false;
-                }
-
-                Material tileMaterial = GetOrCreateTileMaterial(tileDataFolder, texture);
-                if (tileMaterial != null)
-                {
-                    ApplyMaterialToRenderers(prefabContents, tileMaterial);
-                }
-
-                ApplyTileData(tile, data, tileDataFolder);
-
-                GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(prefabContents, prefabPath);
-                if (savedPrefab == null)
-                {
-                    Debug.LogError($"Failed to save generated prefab at {prefabPath}.");
-                    return false;
-                }
-
-                Debug.Log($"Generated tile prefab: {prefabPath}");
-                return true;
+                Debug.LogError($"Could not load base prefab at {BasePrefabPath}.");
+                return 0;
             }
-            finally
+
+            TileComponentData component = data.mock_prefab != null ? data.mock_prefab.tile_component : null;
+            List<int> rotationSteps = BuildAllowedRotationSteps(component, component == null || component.allow_rotation_variants);
+            Material tileMaterial = GetOrCreateTileMaterial(tileDataFolder, texture);
+
+            int generatedVariants = 0;
+            foreach (int rotationStep in rotationSteps)
             {
-                if (prefabContents != null)
+                int finalRotation = NormalizeRotation((component != null ? component.rotation : 0) + rotationStep);
+                string variantPrefabName = GetPrefabVariantName(prefabName, finalRotation);
+                string prefabPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.prefab";
+
+                GameObject prefabContents = null;
+                try
                 {
-                    UnityEngine.Object.DestroyImmediate(prefabContents);
+                    prefabContents = PrefabUtility.InstantiatePrefab(basePrefab) as GameObject;
+                    if (prefabContents == null)
+                    {
+                        Debug.LogError($"Could not instantiate base prefab at {BasePrefabPath}.");
+                        continue;
+                    }
+
+                    prefabContents.name = variantPrefabName;
+                    prefabContents.tag = "Untagged";
+                    prefabContents.transform.localRotation = Quaternion.Euler(0f, 90f * finalRotation, 0f);
+
+                    Tile tile = prefabContents.GetComponent<Tile>();
+                    if (tile == null)
+                    {
+                        Debug.LogError($"Base prefab at {BasePrefabPath} does not contain a WFC.Tile component.");
+                        continue;
+                    }
+
+                    if (tileMaterial != null)
+                    {
+                        ApplyMaterialToRenderers(prefabContents, tileMaterial);
+                    }
+
+                    ApplyTileData(tile, data, tileDataFolder, finalRotation);
+                    tile.allowRotationVariants = false;
+                    tile.allowedRotationSteps = new List<int> { 0 };
+
+                    GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(prefabContents, prefabPath);
+                    if (savedPrefab == null)
+                    {
+                        Debug.LogError($"Failed to save generated prefab at {prefabPath}.");
+                        continue;
+                    }
+
+                    generatedVariants++;
+                    Debug.Log($"Generated tile prefab variant: {prefabPath}");
+                }
+                finally
+                {
+                    if (prefabContents != null)
+                    {
+                        UnityEngine.Object.DestroyImmediate(prefabContents);
+                    }
                 }
             }
+
+            return generatedVariants;
         }
 
         private static void ApplyMaterialToRenderers(GameObject root, Material tileMaterial)
@@ -191,13 +207,13 @@ namespace Editor.WFC
             }
         }
 
-        private static void ApplyTileData(Tile tile, TileDataFile data, string tileDataFolder)
+        private static void ApplyTileData(Tile tile, TileDataFile data, string tileDataFolder, int rotationSteps)
         {
             MockPrefabData mock = data.mock_prefab;
             TileComponentData component = mock != null ? mock.tile_component : null;
 
             tile.connections = ResolveConnections(data, component, tileDataFolder);
-            tile.rotation = NormalizeRotation(component != null ? component.rotation : 0);
+            tile.rotation = NormalizeRotation(rotationSteps);
             tile.allowRotationVariants = component == null || component.allow_rotation_variants;
 
             tile.allowedRotationSteps = BuildAllowedRotationSteps(component, tile.allowRotationVariants);
@@ -489,6 +505,11 @@ namespace Editor.WFC
         private static string GetPrefabName(string tileDataFolder)
         {
             return SanitizeAssetName(Path.GetFileName(tileDataFolder));
+        }
+
+        private static string GetPrefabVariantName(string prefabName, int rotationSteps)
+        {
+            return $"{prefabName}_r{NormalizeRotation(rotationSteps)}";
         }
 
         private static Material GetOrCreateTileMaterial(string tileDataFolder, Texture2D texture)

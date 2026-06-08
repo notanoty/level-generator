@@ -37,6 +37,8 @@ DEFAULT_HEIGHT = 64
 DEFAULT_CELL_SIZE = 24
 GALLERY_PANEL_WIDTH = 180
 GALLERY_PREVIEW_MAX = 96
+ROTATION_STEPS = (0, 1, 2, 3)
+ROTATION_LABELS = {0: "0°", 1: "90°", 2: "180°", 3: "270°"}
 
 
 def clamp(value: int, low: int, high: int) -> int:
@@ -45,6 +47,23 @@ def clamp(value: int, low: int, high: int) -> int:
 
 def rgba_to_hex(color: RGBA) -> str:
 	return "#%02x%02x%02x" % color[:3]
+
+
+def normalize_rotation_steps(steps: Sequence[int] | None) -> List[int]:
+	if not steps:
+		return list(ROTATION_STEPS)
+
+	normalized: List[int] = []
+	seen: set[int] = set()
+	for step in steps:
+		try:
+			value = int(step)
+		except (TypeError, ValueError):
+			continue
+		if value in ROTATION_STEPS and value not in seen:
+			seen.add(value)
+			normalized.append(value)
+	return normalized
 
 
 @dataclass(frozen=True)
@@ -91,7 +110,7 @@ class TilePalette:
 			height = float(height_raw)
 			if not (height == height and height not in (float("inf"), float("-inf"))):
 				raise ValueError(f"Palette color '{color_id}' must define a finite 'height' value.")
-			colors.append(PaletteColor(color_id, purpose, (*components, alpha), height))
+			colors.append(PaletteColor(color_id, purpose, (components[0], components[1], components[2], alpha), height))
 
 		if default_id and default_id not in seen_ids:
 			raise ValueError(f"Default palette id '{default_id}' is not defined in colors.")
@@ -348,7 +367,7 @@ class TileModel:
 		return [list(row) for row in self.cells]
 
 	@classmethod
-	def load_from_folder(cls, folder: Path, palette: TilePalette) -> Tuple["TileModel", List[str]]:
+	def load_from_folder(cls, folder: Path, palette: TilePalette) -> Tuple["TileModel", List[str], List[int]]:
 		json_path = folder / "tile.json"
 		if not json_path.is_file():
 			raise ValueError(f"Missing tile.json in {folder}")
@@ -375,6 +394,7 @@ class TileModel:
 					model.cells[y][x] = default_id
 
 		connections: List[str] = []
+		allowed_rotation_steps = list(ROTATION_STEPS)
 		mock = payload.get("mock_prefab")
 		if isinstance(mock, dict):
 			component = mock.get("tile_component")
@@ -382,11 +402,15 @@ class TileModel:
 				raw_connections = component.get("connections")
 				if isinstance(raw_connections, list):
 					connections = [direction for direction in raw_connections if direction in DIRECTION_OPTIONS]
+				raw_rotations = component.get("allowed_rotation_steps")
+				if isinstance(raw_rotations, list):
+					allowed_rotation_steps = normalize_rotation_steps(raw_rotations)
 
-		return model, connections
+		return model, connections, allowed_rotation_steps
 
-	def to_json(self, connections: Sequence[str]) -> dict:
+	def to_json(self, connections: Sequence[str], allowed_rotation_steps: Sequence[int] | None = None) -> dict:
 		normalized_connections = [direction for direction in connections if direction in DIRECTION_OPTIONS]
+		normalized_rotations = normalize_rotation_steps(allowed_rotation_steps)
 		default_rgba = list(self.palette.rgba(self.palette.default_id))
 		return {
 			"width": self.width,
@@ -409,8 +433,7 @@ class TileModel:
 					"texture": "tile.png",
 					"connections": normalized_connections,
 					"rotation": 0,
-					"allow_rotation_variants": True,
-					"allowed_rotation_steps": [0, 1, 2, 3],
+					"allowed_rotation_steps": normalized_rotations,
 					"grid_size": [100, 100],
 					"snap_plane": "XZ",
 				},
@@ -422,6 +445,7 @@ class TileModel:
 		tile_name: str,
 		output_root: Path,
 		connections: Sequence[str],
+		allowed_rotation_steps: Sequence[int] | None = None,
 		*,
 		target_folder: Path | None = None,
 	) -> Path:
@@ -441,7 +465,7 @@ class TileModel:
 			folder = unique_folder(output_root, tile_name)
 			folder.mkdir(parents=True, exist_ok=False)
 
-		(folder / "tile.json").write_text(json.dumps(self.to_json(connections), indent=2), encoding="utf-8")
+		(folder / "tile.json").write_text(json.dumps(self.to_json(connections, allowed_rotation_steps), indent=2), encoding="utf-8")
 		export_pixels = rotate_pixels_180(self.width, self.height, self.pixels())
 		write_png(folder / "tile.png", self.width, self.height, export_pixels)
 		return folder
@@ -470,6 +494,8 @@ class TilePaintApp:
 		self.drag_paint_color_id: str | None = None
 		self.direction_vars = {direction: tk.BooleanVar(value=True) for direction in DIRECTION_OPTIONS}
 		self.direction_summary_var = tk.StringVar()
+		self.rotation_vars = {step: tk.BooleanVar(value=True) for step in ROTATION_STEPS}
+		self.rotation_summary_var = tk.StringVar()
 		self.brush_size_var = tk.IntVar(value=1)
 		self.brush_shape_var = tk.StringVar(value=BRUSH_SHAPES[0])
 		self.tool_var = tk.StringVar(value=TOOL_BRUSH)
@@ -485,6 +511,7 @@ class TilePaintApp:
 
 		self._build_ui()
 		self._refresh_direction_summary()
+		self._refresh_rotation_summary()
 		self._refresh_active_color_summary()
 		self._fit_cell_size_to_screen()
 		self._refresh_canvas_size()
@@ -563,6 +590,17 @@ class TilePaintApp:
 			wraplength=150,
 			justify="left",
 		).pack(anchor="w", pady=(4, 0))
+
+		rotation_box = ttk.Labelframe(sidebar, text="Allowed Rotations", padding=8)
+		rotation_box.pack(fill="x", pady=(0, 10))
+
+		for step in ROTATION_STEPS:
+			check = ttk.Checkbutton(rotation_box, text=ROTATION_LABELS[step], variable=self.rotation_vars[step], command=self._on_rotation_changed)
+			check.pack(anchor="w", pady=1)
+
+		ttk.Label(rotation_box, text="Selected:").pack(anchor="w", pady=(6, 0))
+		ttk.Label(rotation_box, textvariable=self.rotation_summary_var, wraplength=150, justify="left").pack(anchor="w")
+		ttk.Label(rotation_box, text="Saved to JSON only; does not affect painting or generation.", wraplength=150, justify="left").pack(anchor="w", pady=(4, 0))
 
 		brush_box = ttk.Labelframe(sidebar, text="Brush", padding=8)
 		brush_box.pack(fill="x", pady=(0, 10))
@@ -756,6 +794,7 @@ class TilePaintApp:
 			self.model.height,
 			tuple(tuple(row) for row in self.model.cells),
 			tuple(self.selected_directions()),
+			tuple(self.selected_rotation_steps()),
 			self.tile_name_var.get().strip(),
 			str(self.current_tile_folder.resolve()) if self.current_tile_folder else None,
 		)
@@ -824,6 +863,7 @@ class TilePaintApp:
 			if width > GALLERY_PREVIEW_MAX or height > GALLERY_PREVIEW_MAX:
 				factor = max((width + GALLERY_PREVIEW_MAX - 1) // GALLERY_PREVIEW_MAX, (height + GALLERY_PREVIEW_MAX - 1) // GALLERY_PREVIEW_MAX)
 				factor = max(1, factor)
+							# noinspection PyTypeChecker
 				photo = photo.subsample(factor, factor)
 
 			self._gallery_photos.append(photo)
@@ -845,7 +885,7 @@ class TilePaintApp:
 			return
 
 		try:
-			model, connections = TileModel.load_from_folder(folder, self.palette)
+			model, connections, allowed_rotation_steps = TileModel.load_from_folder(folder, self.palette)
 		except Exception as exc:
 			messagebox.showerror("Open Tile", f"Could not open tile:\n{folder}\n\n{exc}")
 			return
@@ -857,13 +897,26 @@ class TilePaintApp:
 		self.height_var.set(model.height)
 		for direction in DIRECTION_OPTIONS:
 			self.direction_vars[direction].set(direction in connections)
+		for step in ROTATION_STEPS:
+			self.rotation_vars[step].set(step in allowed_rotation_steps)
 		self._refresh_direction_summary()
+		self._refresh_rotation_summary()
 		self._fit_cell_size_to_screen()
 		self._refresh_canvas_size()
 		self.redraw_all()
 		self._commit_clean_state()
 		self._refresh_tile_gallery()
 		self.status_var.set(f"Opened {folder.name}.")
+
+	def _refresh_rotation_summary(self) -> None:
+		selected = self.selected_rotation_steps()
+		self.rotation_summary_var.set(", ".join(ROTATION_LABELS[step] for step in selected) if selected else "None")
+
+	def _on_rotation_changed(self) -> None:
+		self._refresh_rotation_summary()
+
+	def selected_rotation_steps(self) -> List[int]:
+		return [step for step in ROTATION_STEPS if self.rotation_vars[step].get()]
 
 	def _refresh_direction_summary(self) -> None:
 		selected = self.selected_directions()
@@ -962,6 +1015,7 @@ class TilePaintApp:
 		self.model.resize(self.width_var.get(), self.height_var.get())
 		self.model.clear()
 		self.current_tile_folder = None
+		self._refresh_rotation_summary()
 		self._refresh_canvas_size()
 		self.redraw_all()
 		self._commit_clean_state()
@@ -988,12 +1042,14 @@ class TilePaintApp:
 			return False
 
 		connections = self.selected_directions()
+		allowed_rotation_steps = self.selected_rotation_steps()
 		target_folder = self._save_target_folder(tile_name)
 		try:
 			saved_folder = self.model.save(
 				tile_name,
 				self.output_root,
 				connections,
+				allowed_rotation_steps,
 				target_folder=target_folder,
 			)
 		except Exception as exc:  # pragma: no cover - surfaced to UI
@@ -1034,8 +1090,8 @@ def run_self_test() -> None:
 		for x, y in connection_slot_positions(4, 4, DIRECTION_OPTIONS):
 			model.set_cell(x, y, pathway_id)
 
-		first = model.save("Example Tile", root, DIRECTION_OPTIONS)
-		second = model.save("Example Tile", root, ["North", "South"])
+		first = model.save("Example Tile", root, DIRECTION_OPTIONS, [0, 1, 2, 3])
+		second = model.save("Example Tile", root, ["North", "South"], [0, 1, 2, 3])
 
 		assert first.exists()
 		assert (first / "tile.json").exists()
@@ -1051,6 +1107,7 @@ def run_self_test() -> None:
 		assert payload["default_color"] == palette.default_id
 		assert payload["cells"][0][0] == grass_id
 		assert payload["mock_prefab"]["tile_component"]["connections"] == ["North", "East", "South", "West"]
+		assert payload["mock_prefab"]["tile_component"]["allowed_rotation_steps"] == [0, 1, 2, 3]
 
 		north_slots = connection_cells_for_direction(4, 4, "North")
 		assert len(north_slots) == 4
@@ -1076,20 +1133,31 @@ def run_self_test() -> None:
 
 		try:
 			empty = TileModel(palette, width=4, height=4)
-			empty.save("MissingPathway", root, ["North"])
+			empty.save("MissingPathway", root, ["North"], [0, 1, 2, 3])
 			raise AssertionError("Expected save to fail when connection slots are not pathway.")
 		except ValueError:
 			pass
 
-		loaded, loaded_connections = TileModel.load_from_folder(first, palette)
+		loaded, loaded_connections, loaded_rotations = TileModel.load_from_folder(first, palette)
 		assert loaded.width == 4 and loaded.height == 4
 		assert loaded_connections == ["North", "East", "South", "West"]
+		assert loaded_rotations == [0, 1, 2, 3]
 		assert first in list_tile_folders(root)
 
 		loaded.set_cell(2, 2, grass_id)
-		loaded.save("ignored", root, loaded_connections, target_folder=first)
-		reloaded, _ = TileModel.load_from_folder(first, palette)
+		loaded.save("ignored", root, loaded_connections, loaded_rotations, target_folder=first)
+		reloaded, _, reloaded_rotations = TileModel.load_from_folder(first, palette)
 		assert reloaded.cell_color_id(2, 2) == grass_id
+		assert reloaded_rotations == [0, 1, 2, 3]
+
+		custom = TileModel(palette, width=4, height=4)
+		for x, y in connection_slot_positions(4, 4, ["North"]):
+			custom.set_cell(x, y, pathway_id)
+		custom.save("RotationSubset", root, ["North"], [0, 2])
+		custom_payload = json.loads((root / "RotationSubset" / "tile.json").read_text(encoding="utf-8"))
+		assert custom_payload["mock_prefab"]["tile_component"]["allowed_rotation_steps"] == [0, 2]
+		_, _, custom_rotations = TileModel.load_from_folder(root / "RotationSubset", palette)
+		assert custom_rotations == [0, 2]
 
 	print("Self-test passed.")
 
