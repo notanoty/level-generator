@@ -53,6 +53,53 @@ namespace Editor.WFC.TileBuilder
 
         private void GenerateAll()
         {
+            _tilePalette = ResolveTilePalette();
+            if (_tilePalette == null)
+            {
+                return;
+            }
+
+            string generatedFolder = "Assets/Prefabs/Tiles/Generated";
+            if (!AssetDatabase.IsValidFolder(generatedFolder))
+            {
+                Debug.LogWarning($"Generated folder not found: {generatedFolder}");
+                return;
+            }
+
+            string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { generatedFolder });
+            if (prefabGuids == null || prefabGuids.Length == 0)
+            {
+                Debug.LogWarning($"No prefabs found in {generatedFolder}.");
+                return;
+            }
+
+            int processedCount = 0;
+            int skippedCount = 0;
+
+            foreach (string guid in prefabGuids)
+            {
+                string prefabPath = AssetDatabase.GUIDToAssetPath(guid);
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                if (prefab == null)
+                {
+                    skippedCount++;
+                    Debug.LogWarning($"Skipping '{prefabPath}': prefab could not be loaded.");
+                    continue;
+                }
+
+                try
+                {
+                    GenerateOne(prefab);
+                    processedCount++;
+                }
+                catch (Exception exception)
+                {
+                    skippedCount++;
+                    Debug.LogError($"Failed to generate for '{prefabPath}': {exception.Message}");
+                }
+            }
+
+            Debug.Log($"GenerateAll finished for {generatedFolder}. Processed: {processedCount}, skipped: {skippedCount}.");
         }
 
         private void GenerateOne(GameObject tile)
@@ -122,11 +169,11 @@ namespace Editor.WFC.TileBuilder
                         }
 
                         Color32 pixelColor = pixels[(y * width) + x];
-                        if (_tilePalette.TryGetPurpose(pixelColor, out string purpose))
+                        if (_tilePalette.TryGet(pixelColor, out TilePaletteEntry entry))
                         {
-                            TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor,
+                            TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor, entry.Height,
                                 tileWidth, tileDepth, pixels, width, height, processed);
-                            Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{purpose}' in the palette.");
+                            Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{entry.Purpose}' in the palette.");
                         }
                         else
                         {

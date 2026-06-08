@@ -11,7 +11,7 @@ namespace Editor.WFC.TileBuilder
             _ = textureTileBuilder;
         }
 
-        public void BuildObject(int x, int y, GameObject tile, Color32 pixelColor, Texture2D texture)
+        public void BuildObject(int x, int y, GameObject tile, Color32 pixelColor, Texture2D texture, float height)
         {
             if (!tile)
             {
@@ -36,7 +36,7 @@ namespace Editor.WFC.TileBuilder
             float cellWidth = tileWidth / texture.width;
             float cellDepth = tileDepth / texture.height;
 
-            GameObject cube = CreateRectangleCube(tile, x, y, 1, 1, cellWidth, cellDepth, tileWidth, tileDepth);
+            GameObject cube = CreateRectangleCube(tile, x, y, 1, 1, cellWidth, cellDepth, tileWidth, tileDepth, height);
 
 #if UNITY_EDITOR
             Undo.RegisterCreatedObjectUndo(cube, "Build Pixel Cube");
@@ -46,7 +46,7 @@ namespace Editor.WFC.TileBuilder
         }
 
 
-        public void BuildObjectOptimized(int x, int y, GameObject tile, Color32 pixelColor,
+        public void BuildObjectOptimized(int x, int y, GameObject tile, Color32 pixelColor, float objectHeight,
             float tileWidth, float tileDepth, Color32[] pixels, int width, int height, bool[,] processed)
         {
             if (tileWidth <= 0f || tileDepth <= 0f)
@@ -67,7 +67,7 @@ namespace Editor.WFC.TileBuilder
             float cellWidth = tileWidth / width;
             float cellDepth = tileDepth / height;
             GameObject cube = CreateRectangleCube(tile, x, y, Math.Max(1, rectangleWidth), Math.Max(1, rectangleHeight),
-                cellWidth, cellDepth, tileWidth, tileDepth);
+                cellWidth, cellDepth, tileWidth, tileDepth, objectHeight);
 
 #if UNITY_EDITOR
             Undo.RegisterCreatedObjectUndo(cube, "Build Optimized Pixel Cube");
@@ -95,16 +95,16 @@ namespace Editor.WFC.TileBuilder
         }
 
         private static GameObject CreateRectangleCube(GameObject tile, int x, int y, int rectWidth, int rectHeight,
-            float cellWidth, float cellDepth, float tileWidth, float tileDepth)
+            float cellWidth, float cellDepth, float tileWidth, float tileDepth, float height)
         {
             GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cube.name = $"Pixel_{x}_{y}";
             cube.transform.SetParent(tile.transform, false);
             cube.transform.localPosition = new Vector3(
                 x * cellWidth / 10f - tileWidth * 0.5f + cellWidth * rectWidth * 0.05f + 45,
-                0,
+                Mathf.Max(0f, height) * 0.5f,
                 y * cellDepth / 10f - tileDepth * 0.5f + cellDepth * rectHeight * 0.05f + 45);
-            cube.transform.localScale = new Vector3(cellWidth * rectWidth / 10f, 1f, cellDepth * rectHeight / 10f);
+            cube.transform.localScale = new Vector3(cellWidth * rectWidth / 10f, Mathf.Max(0f, height), cellDepth * rectHeight / 10f);
             return cube;
         }
 
