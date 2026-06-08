@@ -22,6 +22,7 @@ namespace WFC
     public sealed class TilePalette
     {
         public const string DefaultAssetPath = "Assets/tile-palette.json";
+        private const int ColorMatchTolerance = 10;
 
         private readonly string _defaultId;
         private readonly List<TilePaletteEntry> _entries;
@@ -181,7 +182,32 @@ namespace WFC
 
         public bool TryGet(Color32 color, out TilePaletteEntry entry)
         {
-            return _entriesByColor.TryGetValue(PackColor(color), out entry);
+            if (_entriesByColor.TryGetValue(PackColor(color), out entry))
+            {
+                return true;
+            }
+
+            int bestScore = int.MaxValue;
+            TilePaletteEntry bestEntry = null;
+
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                TilePaletteEntry candidate = _entries[i];
+                if (!IsWithinTolerance(color, candidate.Color))
+                {
+                    continue;
+                }
+
+                int score = GetColorDistanceScore(color, candidate.Color);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestEntry = candidate;
+                }
+            }
+
+            entry = bestEntry;
+            return entry != null;
         }
 
         public bool TryGetPurpose(Color32 color, out string purpose)
@@ -294,6 +320,24 @@ namespace WFC
         private static int PackColor(Color32 color)
         {
             return (color.r << 24) | (color.g << 16) | (color.b << 8) | color.a;
+        }
+
+        private static bool IsWithinTolerance(Color32 first, Color32 second)
+        {
+            return Mathf.Abs(first.r - second.r) <= ColorMatchTolerance
+                && Mathf.Abs(first.g - second.g) <= ColorMatchTolerance
+                && Mathf.Abs(first.b - second.b) <= ColorMatchTolerance
+                && Mathf.Abs(first.a - second.a) <= ColorMatchTolerance;
+        }
+
+        private static int GetColorDistanceScore(Color32 first, Color32 second)
+        {
+            int dr = first.r - second.r;
+            int dg = first.g - second.g;
+            int db = first.b - second.b;
+            int da = first.a - second.a;
+
+            return (dr * dr) + (dg * dg) + (db * db) + (da * da);
         }
 
         [Serializable]

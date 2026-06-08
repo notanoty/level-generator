@@ -90,24 +90,37 @@ namespace Editor.WFC
                 }
 
                 Debug.Log($"Texture found on '{targetTile.name}': {texture.name}");
-                
-                bool[,] processed = new bool[64, 64];
+
+                Renderer tileRenderer = targetTile.GetComponent<Renderer>();
+                if (tileRenderer == null)
+                {
+                    Debug.LogWarning($"No renderer found on '{targetTile.name}'.");
+                    return;
+                }
+
+                Bounds bounds = tileRenderer.bounds;
+                float tileWidth = bounds.size.x;
+                float tileDepth = bounds.size.z;
+
                 int width = texture.width;
                 int height = texture.height;
                 Color32[] pixels = texture.GetPixels32();
+                bool[,] processed = new bool[64, 64];
+
                 for (int x = 0; x < width; x++)
                 {
                     for (int y = 0; y < height; y++)
                     {
-                        if(processed[x, y])
+                        if (processed[x, y])
                         {
                             continue;
                         }
-                        
+
                         Color32 pixelColor = pixels[(y * width) + x];
                         if (_tilePalette.TryGetPurpose(pixelColor, out string purpose))
                         {
-                            TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor, texture, _tilePalette, processed);
+                            TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor,
+                                tileWidth, tileDepth, pixels, width, height, processed);
                             Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{purpose}' in the palette.");
                         }
                         else

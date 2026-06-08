@@ -1,7 +1,6 @@
 ﻿using System;
 using UnityEditor;
 using UnityEngine;
-using WFC;
 
 namespace Editor.WFC
 {
@@ -47,19 +46,9 @@ namespace Editor.WFC
         }
 
 
-        public void BuildObjectOptimized(int x, int y, GameObject tile, Color32 pixelColor, Texture2D texture,
-            TilePalette palette, bool[,] processed)
+        public void BuildObjectOptimized(int x, int y, GameObject tile, Color32 pixelColor,
+            float tileWidth, float tileDepth, Color32[] pixels, int width, int height, bool[,] processed)
         {
-            _ = x;
-            _ = y;
-            _ = palette;
-
-            if (!TryGetOptimizedTextureData(tile, texture, out float tileWidth, out float tileDepth,
-                    out Color32[] pixels, out int width, out int height))
-            {
-                return;
-            }
-
             if (tileWidth <= 0f || tileDepth <= 0f)
             {
                 return;
@@ -83,7 +72,7 @@ namespace Editor.WFC
 #if UNITY_EDITOR
             Undo.RegisterCreatedObjectUndo(cube, "Build Optimized Pixel Cube");
 #endif
-            
+
             FixShader(pixelColor, cube);
         }
 
@@ -190,53 +179,6 @@ namespace Editor.WFC
             return Shader.Find("Sprites/Default");
         }
 
-        private static bool TryGetOptimizedTextureData(GameObject tile, Texture2D texture, out float tileWidth,
-            out float tileDepth, out Color32[] pixels, out int width, out int height)
-        {
-            tileWidth = 0f;
-            tileDepth = 0f;
-            pixels = null;
-            width = 0;
-            height = 0;
-
-            if (!tile)
-            {
-                return false;
-            }
-
-            Renderer tileRenderer = tile.GetComponent<Renderer>();
-            if (!tileRenderer)
-            {
-                return false;
-            }
-
-            if (!texture)
-            {
-                return false;
-            }
-
-            Bounds bounds = tileRenderer.bounds;
-            tileWidth = bounds.size.x;
-            tileDepth = bounds.size.z;
-
-            width = texture.width;
-            height = texture.height;
-            if (width <= 0 || height <= 0)
-            {
-                return false;
-            }
-
-            try
-            {
-                pixels = texture.GetPixels32();
-            }
-            catch
-            {
-                return false;
-            }
-
-            return pixels != null && pixels.Length >= width * height;
-        }
 
         private static void GetRectangleSize(int startX, int startY, bool[,] processed, Color32[] pixels, int width,
             int height, out int rectangleWidth, out int rectangleHeight)
