@@ -2,7 +2,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace Editor.WFC
+namespace Editor.WFC.TileBuilder
 {
     public class TileBulder
     {

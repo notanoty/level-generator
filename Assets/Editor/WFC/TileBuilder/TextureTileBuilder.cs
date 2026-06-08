@@ -1,8 +1,9 @@
-﻿using UnityEditor;
+﻿using System;
+using UnityEditor;
 using UnityEngine;
 using WFC;
 
-namespace Editor.WFC
+namespace Editor.WFC.TileBuilder
 {
     public class TextureTileBuilder : EditorWindow
     {
@@ -56,11 +57,15 @@ namespace Editor.WFC
 
         private void GenerateOne(GameObject tile)
         {
-            _tilePalette = TilePalette.LoadDefault();
-            
             if (tile == null)
             {
                 Debug.LogWarning("Please assign a GameObject before generating one tile.");
+                return;
+            }
+
+            _tilePalette = ResolveTilePalette();
+            if (_tilePalette == null)
+            {
                 return;
             }
 
@@ -145,6 +150,26 @@ namespace Editor.WFC
                 {
                     PrefabUtility.UnloadPrefabContents(targetTile);
                 }
+            }
+        }
+
+        private TilePalette ResolveTilePalette()
+        {
+            TilePaletteBuilderSettings settings = UnityEngine.Object.FindFirstObjectByType<TilePaletteBuilderSettings>();
+            if (settings == null)
+            {
+                Debug.LogWarning("No TilePaletteBuilderSettings found in the current scene. Add one to configure tile palette generation.");
+                return null;
+            }
+
+            try
+            {
+                return settings.BuildPalette();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"Failed to build tile palette from '{settings.name}': {exception.Message}");
+                return null;
             }
         }
 

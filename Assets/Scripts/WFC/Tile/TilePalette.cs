@@ -5,20 +5,6 @@ using UnityEngine;
 
 namespace WFC
 {
-    public sealed class TilePaletteEntry
-    {
-        public string Id { get; }
-        public string Purpose { get; }
-        public Color32 Color { get; }
-
-        internal TilePaletteEntry(string id, string purpose, Color32 color)
-        {
-            Id = id;
-            Purpose = purpose;
-            Color = color;
-        }
-    }
-
     public sealed class TilePalette
     {
         public const string DefaultAssetPath = "Assets/tile-palette.json";
@@ -271,13 +257,14 @@ namespace WFC
                 }
 
                 Color32 color = ParseColor(colorFile.rgba, id);
+                float height = ParseHeight(colorFile.height, id);
                 int packedColor = PackColor(color);
                 if (entriesByColor.ContainsKey(packedColor))
                 {
                     throw new FormatException($"Duplicate palette color found for id '{id}'.");
                 }
 
-                TilePaletteEntry entry = new TilePaletteEntry(id, purpose, color);
+                TilePaletteEntry entry = new TilePaletteEntry(id, purpose, color, height);
                 entries.Add(entry);
                 entriesById.Add(id, entry);
                 entriesByPurpose.Add(purpose, entry);
@@ -310,6 +297,16 @@ namespace WFC
             byte b = ClampToByte(rgba[2]);
             byte a = rgba.Length >= 4 ? ClampToByte(rgba[3]) : (byte)255;
             return new Color32(r, g, b, a);
+        }
+
+        private static float ParseHeight(float height, string id)
+        {
+            if (float.IsNaN(height) || float.IsInfinity(height))
+            {
+                throw new FormatException($"Palette entry '{id}' must define a finite 'height' value.");
+            }
+
+            return height;
         }
 
         private static byte ClampToByte(int value)
@@ -353,6 +350,7 @@ namespace WFC
             public string id;
             public string purpose;
             public int[] rgba;
+            public float height = 1f;
         }
     }
 }

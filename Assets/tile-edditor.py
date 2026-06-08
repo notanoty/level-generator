@@ -52,6 +52,7 @@ class PaletteColor:
 	id: str
 	purpose: str
 	rgba: RGBA
+	height: float = 1.0
 
 
 @dataclass
@@ -86,7 +87,11 @@ class TilePalette:
 				raise ValueError(f"Palette color '{color_id}' must define 'rgba' with at least 3 values.")
 			components = [clamp(int(value), 0, 255) for value in rgba_raw[:3]]
 			alpha = 255 if len(rgba_raw) < 4 else clamp(int(rgba_raw[3]), 0, 255)
-			colors.append(PaletteColor(color_id, purpose, (*components, alpha)))
+			height_raw = entry.get("height", 1)
+			height = float(height_raw)
+			if not (height == height and height not in (float("inf"), float("-inf"))):
+				raise ValueError(f"Palette color '{color_id}' must define a finite 'height' value.")
+			colors.append(PaletteColor(color_id, purpose, (*components, alpha), height))
 
 		if default_id and default_id not in seen_ids:
 			raise ValueError(f"Default palette id '{default_id}' is not defined in colors.")
