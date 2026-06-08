@@ -104,6 +104,8 @@ namespace Editor.WFC.TileBuilder
 
         private void GenerateOne(GameObject tile)
         {
+            ClearOne(tile);
+            
             if (tile == null)
             {
                 Debug.LogWarning("Please assign a GameObject before generating one tile.");
@@ -220,66 +222,74 @@ namespace Editor.WFC.TileBuilder
             }
         }
 
-
-        
         private void Clear()
         {
             if (_tileForOne != null)
             {
                 // Clear selected prefab only
-                string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(_tileForOne);
-                if (!string.IsNullOrEmpty(prefabPath))
-                {
-                    GameObject prefab = PrefabUtility.LoadPrefabContents(prefabPath);
-                    try
-                    {
-                        Transform[] children = prefab.GetComponentsInChildren<Transform>();
-                        for (int i = children.Length - 1; i >= 0; i--)
-                        {
-                            if (children[i] != prefab.transform)
-                            {
-                                DestroyImmediate(children[i].gameObject);
-                            }
-                        }
-                        PrefabUtility.SaveAsPrefabAsset(prefab, prefabPath);
-                        Debug.Log($"Cleared prefab {prefabPath}");
-                    }
-                    finally
-                    {
-                        PrefabUtility.UnloadPrefabContents(prefab);
-                    }
-                }
+                ClearOne(_tileForOne);
             }
             else
             {
-                // Clear all prefabs in Generated folder
-                string generatedFolder = "Assets/Prefabs/Tiles/Generated";
-                string[] prefabGUIDs = AssetDatabase.FindAssets("t:Prefab", new[] { generatedFolder });
+                ClearAll();
+            }
+        }
 
-                foreach (string guid in prefabGUIDs)
+        private static void ClearAll()
+        {
+            // Clear all prefabs in Generated folder
+            string generatedFolder = "Assets/Prefabs/Tiles/Generated";
+            string[] prefabGUIDs = AssetDatabase.FindAssets("t:Prefab", new[] { generatedFolder });
+
+            foreach (string guid in prefabGUIDs)
+            {
+                string prefabPath = AssetDatabase.GUIDToAssetPath(guid);
+                GameObject prefab = PrefabUtility.LoadPrefabContents(prefabPath);
+                try
                 {
-                    string prefabPath = AssetDatabase.GUIDToAssetPath(guid);
-                    GameObject prefab = PrefabUtility.LoadPrefabContents(prefabPath);
-                    try
+                    Transform[] children = prefab.GetComponentsInChildren<Transform>();
+                    for (int i = children.Length - 1; i >= 0; i--)
                     {
-                        Transform[] children = prefab.GetComponentsInChildren<Transform>();
-                        for (int i = children.Length - 1; i >= 0; i--)
+                        if (children[i] != prefab.transform)
                         {
-                            if (children[i] != prefab.transform)
-                            {
-                                DestroyImmediate(children[i].gameObject);
-                            }
+                            DestroyImmediate(children[i].gameObject);
                         }
-                        PrefabUtility.SaveAsPrefabAsset(prefab, prefabPath);
                     }
-                    finally
-                    {
-                        PrefabUtility.UnloadPrefabContents(prefab);
-                    }
+                    PrefabUtility.SaveAsPrefabAsset(prefab, prefabPath);
                 }
+                finally
+                {
+                    PrefabUtility.UnloadPrefabContents(prefab);
+                }
+            }
 
-                AssetDatabase.Refresh();
-                Debug.Log($"Cleared all prefabs in {generatedFolder}");
+            AssetDatabase.Refresh();
+            Debug.Log($"Cleared all prefabs in {generatedFolder}");
+        }
+
+        private void ClearOne(GameObject tile)
+        {
+            string prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(tile);
+            if (!string.IsNullOrEmpty(prefabPath))
+            {
+                GameObject prefab = PrefabUtility.LoadPrefabContents(prefabPath);
+                try
+                {
+                    Transform[] children = prefab.GetComponentsInChildren<Transform>();
+                    for (int i = children.Length - 1; i >= 0; i--)
+                    {
+                        if (children[i] != prefab.transform)
+                        {
+                            DestroyImmediate(children[i].gameObject);
+                        }
+                    }
+                    PrefabUtility.SaveAsPrefabAsset(prefab, prefabPath);
+                    Debug.Log($"Cleared prefab {prefabPath}");
+                }
+                finally
+                {
+                    PrefabUtility.UnloadPrefabContents(prefab);
+                }
             }
         }
 
