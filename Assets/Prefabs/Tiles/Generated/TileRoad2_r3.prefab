@@ -72,6 +72,10 @@ PrefabInstance:
       propertyPath: allowedRotationSteps.Array.size
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 5617755860604549538, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: f6b3e86fb039b8e458dbb9b9bcf6cc7e, type: 2}
     - target: {fileID: 9010719439865631840, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_Name
       value: TileRoad2_r3

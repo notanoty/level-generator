@@ -57,6 +57,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2800000, guid: 87f1c94981218794ea15531abef3c5be, type: 3}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: connections
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: allowRotationVariants
       value: 0
       objectReference: {fileID: 0}
@@ -64,6 +68,10 @@ PrefabInstance:
       propertyPath: allowedRotationSteps.Array.size
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 5617755860604549538, guid: 4b479718ce257644b81b51b752051f05, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: e90664e6323397d4e9bc8d744ed6d289, type: 2}
     - target: {fileID: 9010719439865631840, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_Name
       value: Tile01test_r0

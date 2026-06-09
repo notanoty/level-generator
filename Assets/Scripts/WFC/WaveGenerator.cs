@@ -330,11 +330,9 @@ namespace WFC
         // ReSharper disable Unity.PerformanceAnalysis
         private bool HandleWaveFunctionCollapse()
         {
-            bool collapsedSomething = false;
-            
-            List<Tile> leastEntropyCell = null;
-            int leastEntropyCellX = 0, leastEntropyCellY = 0;
-            int leastEntropyDistanceToStart = int.MaxValue;
+            List<Vector2Int> leastEntropyCells = null;
+            int leastEntropyCount = int.MaxValue;
+
             for (int x = 0; x < width; x++)
             {
                 for (int y = 0; y < height; y++)
@@ -353,39 +351,28 @@ namespace WFC
                         continue;
                     }
 
-                    if (cellCount == 1)
+                    if (cellCount < leastEntropyCount)
                     {
-                        Tile tile = Collapse(x, y);
-                        PlaceTile(tile, x, y);
-                        collapsedSomething = true;
-                        continue;
+                        leastEntropyCount = cellCount;
+                        leastEntropyCells = new List<Vector2Int> { new Vector2Int(x, y) };
                     }
-                    int distanceToStart = _hasStartTile
-                        ? Mathf.Abs(x - _startTileX) + Mathf.Abs(y - _startTileY)
-                        : int.MaxValue;
-
-                    if (leastEntropyCell == null
-                        || cellCount < leastEntropyCell.Count
-                        || (cellCount == leastEntropyCell.Count && distanceToStart < leastEntropyDistanceToStart))
+                    else if (cellCount == leastEntropyCount)
                     {
-                        leastEntropyCell = cell;
-                        leastEntropyCellX = x;
-                        leastEntropyCellY = y;
-                        leastEntropyDistanceToStart = distanceToStart;
+                        if (leastEntropyCells == null)
+                        {
+                            leastEntropyCells = new List<Vector2Int>();
+                        }
+                        leastEntropyCells.Add(new Vector2Int(x, y));
                     }
                 }
             }
 
-            if (collapsedSomething)
+            if (leastEntropyCells != null && leastEntropyCells.Count > 0)
             {
-                return true;
-            }
-
-            if (leastEntropyCell != null)
-            {
-                Debug.Log($"Cell position: X {leastEntropyCellX} Y {leastEntropyCellY}");
-                Tile tile = Collapse(leastEntropyCellX, leastEntropyCellY);
-                PlaceTile(tile, leastEntropyCellX, leastEntropyCellY);
+                Vector2Int chosenCell = leastEntropyCells[Random.Range(0, leastEntropyCells.Count)];
+                Debug.Log($"Cell position: X {chosenCell.x} Y {chosenCell.y}");
+                Tile tile = Collapse(chosenCell.x, chosenCell.y);
+                PlaceTile(tile, chosenCell.x, chosenCell.y);
                 return true;
             }
 
