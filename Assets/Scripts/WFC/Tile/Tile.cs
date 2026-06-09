@@ -82,7 +82,9 @@ namespace WFC
             {
                 if (connection == null || connection.tile == null) continue;
                 if (connection.tile != other) continue;
-                if (DirectionUtils.Has(connection.direction, dir)) return true;
+
+                Direction rotatedDirection = DirectionUtils.Rotate(connection.direction, rotation);
+                if (DirectionUtils.Has(rotatedDirection, dir)) return true;
             }
 
             return false;
@@ -177,12 +179,25 @@ namespace WFC
                 {
                     foreach (var connectedTile in connectedTiles)
                     {
-                        if (connectedTile != null && connectedTile.tile != null && connectedTile.direction == direction)
+                        if (connectedTile == null || connectedTile.tile == null)
                         {
-                            if (!PossibleTilesByDirection[direction].Contains(connectedTile.tile))
-                            {
-                                PossibleTilesByDirection[direction].Add(connectedTile.tile);
-                            }
+                            continue;
+                        }
+
+                        Direction rotatedDirection = DirectionUtils.Rotate(connectedTile.direction, rotation);
+                        if (!DirectionUtils.Has(rotatedDirection, direction))
+                        {
+                            continue;
+                        }
+
+                        if (!PossibleTilesByDirection[direction].Contains(connectedTile.tile))
+                        {
+                            PossibleTilesByDirection[direction].Add(connectedTile.tile);
+                        }
+
+                        if (ImpossibleTilesByDirection[direction].Contains(connectedTile.tile))
+                        {
+                            ImpossibleTilesByDirection[direction].Remove(connectedTile.tile);
                         }
                     }
                 }
