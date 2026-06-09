@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -39,6 +40,8 @@ namespace WFC
 			{
 				LoadDefaultsFromJson();
 			}
+
+			SaveToJsonFile();
 		}
 
 		[ContextMenu("Load Defaults From JSON")]
@@ -72,6 +75,37 @@ namespace WFC
 			initializedFromDefaults = true;
 		}
 
+		[ContextMenu("Save To JSON")]
+		public void SaveToJsonFile()
+		{
+			if (!Application.isEditor)
+			{
+				return;
+			}
+
+			if (colors.Count == 0)
+			{
+				return;
+			}
+
+			string jsonPath = Path.GetFullPath(Path.Combine(Application.dataPath, "tile-palette.json"));
+			PaletteFile paletteFile = CreatePaletteFile();
+			TouchPaletteFile(paletteFile);
+			string json = NormalizeLineEndings(JsonUtility.ToJson(paletteFile, true));
+
+			if (File.Exists(jsonPath))
+			{
+				string existingJson = NormalizeLineEndings(File.ReadAllText(jsonPath));
+				if (string.Equals(existingJson, json, StringComparison.Ordinal))
+				{
+					return;
+				}
+			}
+
+			File.WriteAllText(jsonPath, json);
+			Debug.Log($"Saved tile palette JSON to {jsonPath}", this);
+		}
+
 		public TilePalette BuildPalette()
 		{
 			if (colors.Count == 0)
@@ -79,6 +113,11 @@ namespace WFC
 				LoadDefaultsFromJson();
 			}
 
+			return TilePalette.LoadFromJson(JsonUtility.ToJson(CreatePaletteFile()));
+		}
+
+		private PaletteFile CreatePaletteFile()
+		{
 			PaletteFile paletteFile = new PaletteFile
 			{
 				@default = string.IsNullOrWhiteSpace(defaultId) && colors.Count > 0 ? colors[0].id : defaultId,
@@ -97,7 +136,42 @@ namespace WFC
 				};
 			}
 
-			return TilePalette.LoadFromJson(JsonUtility.ToJson(paletteFile));
+			return paletteFile;
+		}
+
+		private static void TouchPaletteFile(PaletteFile paletteFile)
+		{
+			if (paletteFile == null)
+			{
+				return;
+			}
+
+			_ = paletteFile.@default;
+			if (paletteFile.colors == null)
+			{
+				return;
+			}
+
+			for (int i = 0; i < paletteFile.colors.Length; i++)
+			{
+				PaletteColorFile colorFile = paletteFile.colors[i];
+				if (colorFile == null)
+				{
+					continue;
+				}
+
+				_ = colorFile.id;
+				_ = colorFile.purpose;
+				_ = colorFile.rgba;
+				_ = colorFile.height;
+			}
+		}
+
+		private static string NormalizeLineEndings(string text)
+		{
+			return string.IsNullOrEmpty(text)
+				? text
+				: text.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", Environment.NewLine);
 		}
 
 		[Serializable]

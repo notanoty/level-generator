@@ -659,6 +659,12 @@ namespace Editor.WFC
                 needsReimport = true;
             }
 
+            if (importer.textureCompression != TextureImporterCompression.Uncompressed)
+            {
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                needsReimport = true;
+            }
+
             if (importer.filterMode != FilterMode.Point)
             {
                 importer.filterMode = FilterMode.Point;

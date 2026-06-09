@@ -54,6 +54,7 @@ namespace Editor.WFC.TileBuilder
         private void GenerateAll()
         {
             _tilePalette = ResolveTilePalette();
+            
             if (_tilePalette == null)
             {
                 return;
@@ -213,6 +214,7 @@ namespace Editor.WFC.TileBuilder
 
             try
             {
+                // settings.ReloadPalette();
                 return settings.BuildPalette();
             }
             catch (Exception exception)

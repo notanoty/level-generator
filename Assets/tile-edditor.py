@@ -130,6 +130,73 @@ class TilePalette:
 		return color_id in self._by_id
 
 
+def palette_to_payload(colors: Sequence[PaletteColor], default_id: str) -> dict:
+	return {
+		"default": default_id,
+		"colors": [
+			{
+				"id": color.id,
+				"purpose": color.purpose,
+				"rgba": list(color.rgba),
+				"height": color.height,
+			}
+			for color in colors
+		],
+	}
+
+
+@dataclass
+class PaletteEditorRow:
+	row_key: str
+	frame: ttk.Frame
+	default_var: tk.StringVar
+	id_var: tk.StringVar
+	purpose_var: tk.StringVar
+	r_var: tk.StringVar
+	g_var: tk.StringVar
+	b_var: tk.StringVar
+	a_var: tk.StringVar
+	height_var: tk.StringVar
+	preview: tk.Canvas
+	preview_rect: int
+
+	def preview_rgba(self) -> RGBA:
+		return (
+			clamp(int(float(self.r_var.get())), 0, 255),
+			clamp(int(float(self.g_var.get())), 0, 255),
+			clamp(int(float(self.b_var.get())), 0, 255),
+			clamp(int(float(self.a_var.get())), 0, 255),
+		)
+
+	def refresh_preview(self) -> None:
+		try:
+			color = self.preview_rgba()
+		except (TypeError, ValueError):
+			color = (128, 128, 128, 255)
+		self.preview.itemconfigure(self.preview_rect, fill=rgba_to_hex(color))
+
+	def to_palette_color(self) -> PaletteColor:
+		color_id = self.id_var.get().strip()
+		if not color_id:
+			raise ValueError("Color id cannot be empty.")
+
+		purpose = self.purpose_var.get().strip() or color_id
+		try:
+			rgba = self.preview_rgba()
+		except (TypeError, ValueError) as exc:
+			raise ValueError(f"Color '{color_id}' has invalid RGBA values.") from exc
+
+		try:
+			height = float(self.height_var.get())
+		except (TypeError, ValueError) as exc:
+			raise ValueError(f"Color '{color_id}' has an invalid height value.") from exc
+
+		if not (height == height and height not in (float("inf"), float("-inf"))):
+			raise ValueError(f"Color '{color_id}' must define a finite height value.")
+
+		return PaletteColor(color_id, purpose, rgba, height)
+
+
 def slot_indices_along_axis(length: int, count: int) -> List[int]:
 	if length <= 0:
 		return []
@@ -277,6 +344,14 @@ class TileModel:
 		for y in range(self.height):
 			for x in range(self.width):
 				self.cells[y][x] = default
+
+	def rebind_palette(self, palette: TilePalette) -> None:
+		self.palette = palette
+		default = palette.default_id
+		for y in range(self.height):
+			for x in range(self.width):
+				if not palette.is_valid(self.cells[y][x]):
+					self.cells[y][x] = default
 
 	def set_cell(self, x: int, y: int, color_id: str) -> None:
 		if 0 <= x < self.width and 0 <= y < self.height and self.palette.is_valid(color_id):
@@ -471,9 +546,270 @@ class TileModel:
 		return folder
 
 
+class PaletteEditorWindow:
+	def __init__(self, app: "TilePaintApp", add_new_row: bool = False) -> None:
+		self.app = app
+		self.window = tk.Toplevel(app.root)
+		self.window.title("Palette Editor")
+		self.window.minsize(860, 480)
+		self.window.configure(bg=DARK_BG)
+		self.window.transient(app.root)
+		self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+		self._row_index = 0
+		self._rows: List[PaletteEditorRow] = []
+		self._row_id_to_index: dict[str, int] = {}
+		self.default_row_var = tk.StringVar(value="")
+
+		self._build_ui()
+		self.load_palette(app.palette)
+		if add_new_row:
+			self.add_color(select_new=True)
+
+	def _build_ui(self) -> None:
+		container = ttk.Frame(self.window, padding=8)
+		container.pack(fill="both", expand=True)
+
+		top_row = ttk.Frame(container)
+		top_row.pack(fill="x", pady=(0, 8))
+		ttk.Label(
+			top_row,
+			text="Edit the palette used by the tile painter and saved to tile-palette.json.",
+			wraplength=780,
+			justify="left",
+		).pack(side="left", fill="x", expand=True)
+
+		actions = ttk.Frame(container)
+		actions.pack(fill="x", pady=(0, 8))
+		tk.Button(actions, text="Add Color", command=self.add_color).pack(side="left")
+		tk.Button(actions, text="Save Palette", command=self.save_palette).pack(side="left", padx=(8, 0))
+		tk.Button(actions, text="Reload", command=self.reload_from_file).pack(side="left", padx=(8, 0))
+		tk.Button(actions, text="Close", command=self.close).pack(side="right")
+
+		list_row = ttk.Frame(container)
+		list_row.pack(fill="both", expand=True)
+
+		self.canvas = tk.Canvas(list_row, highlightthickness=1, highlightbackground=DARK_BORDER, bg=DARK_BG)
+		self.scrollbar = ttk.Scrollbar(list_row, orient="vertical", command=self.canvas.yview)
+		self.rows_container = ttk.Frame(self.canvas)
+		self.rows_container.bind(
+			"<Configure>",
+			lambda _event: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+		)
+		self._rows_window_id = self.canvas.create_window((0, 0), window=self.rows_container, anchor="nw")
+		self.canvas.configure(yscrollcommand=self.scrollbar.set)
+		self.canvas.pack(side="left", fill="both", expand=True)
+		self.scrollbar.pack(side="right", fill="y")
+		self.canvas.bind("<Configure>", self._on_canvas_configure)
+		self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+
+		headers = ttk.Frame(self.rows_container)
+		headers.pack(fill="x", pady=(0, 4))
+		for column, text, width in (
+			(0, "Default", 8),
+			(1, "ID", 16),
+			(2, "Purpose", 16),
+			(3, "R", 5),
+			(4, "G", 5),
+			(5, "B", 5),
+			(6, "A", 5),
+			(7, "Height", 8),
+			(8, "Preview", 8),
+			(9, "", 8),
+		):
+			label = ttk.Label(headers, text=text)
+			label.grid(row=0, column=column, padx=(0, 4), sticky="w")
+			if width:
+				label.configure(width=width)
+
+		self.rows_frame = ttk.Frame(self.rows_container)
+		self.rows_frame.pack(fill="x")
+
+	def _on_canvas_configure(self, event: tk.Event) -> None:
+		self.canvas.itemconfigure(self._rows_window_id, width=event.width)
+
+	def _on_mousewheel(self, event: tk.Event) -> None:
+		delta = -1 * (event.delta // 120) if event.delta else 0
+		if delta:
+			self.canvas.yview_scroll(delta, "units")
+
+	def close(self) -> None:
+		if self.window.winfo_exists():
+			self.window.destroy()
+
+	def lift(self) -> None:
+		if self.window.winfo_exists():
+			self.window.deiconify()
+			self.window.lift()
+			self.window.focus_force()
+
+	def load_palette(self, palette: TilePalette) -> None:
+		for row in self._rows:
+			row.frame.destroy()
+		self._rows.clear()
+		self._row_id_to_index.clear()
+		self.default_row_var.set("")
+
+		default_row_key = ""
+		for color in palette.colors:
+			row = self._create_row(color)
+			if color.id == palette.default_id:
+				default_row_key = row.row_key
+
+		if self._rows:
+			self.default_row_var.set(default_row_key or self._rows[0].row_key)
+		self._refresh_all_previews()
+
+	def reload_from_file(self) -> None:
+		try:
+			palette = TilePalette.load(self.app.palette_path)
+		except Exception as exc:
+			messagebox.showerror("Reload Palette", f"Could not load palette:\n\n{exc}")
+			return
+
+		self.app.apply_palette(palette)
+		self.load_palette(palette)
+
+	def add_color(self, select_new: bool = True) -> None:
+		existing_ids = {row.id_var.get().strip() for row in self._rows}
+		base_id = "new_color"
+		candidate = base_id
+		suffix = 1
+		while candidate in existing_ids:
+			candidate = f"{base_id}_{suffix}"
+			suffix += 1
+
+		color = PaletteColor(candidate, "New Color", (255, 255, 255, 255), 1.0)
+		row = self._create_row(color)
+		if select_new:
+			self.default_row_var.set(row.row_key)
+		self._refresh_all_previews()
+		self.canvas.yview_moveto(1.0)
+
+	def _create_row(self, color: PaletteColor) -> PaletteEditorRow:
+		row_key = f"row_{self._row_index}"
+		self._row_index += 1
+		frame = ttk.Frame(self.rows_frame)
+		frame.pack(fill="x", pady=2)
+
+		default_button = ttk.Radiobutton(frame, variable=self.default_row_var, value=row_key)
+		default_button.grid(row=0, column=0, padx=(0, 4), sticky="w")
+
+		id_var = tk.StringVar(value=color.id)
+		purpose_var = tk.StringVar(value=color.purpose)
+		r_var = tk.StringVar(value=str(color.rgba[0]))
+		g_var = tk.StringVar(value=str(color.rgba[1]))
+		b_var = tk.StringVar(value=str(color.rgba[2]))
+		a_var = tk.StringVar(value=str(color.rgba[3]))
+		height_var = tk.StringVar(value=str(color.height))
+
+		widgets = [id_var, purpose_var, r_var, g_var, b_var, a_var, height_var]
+		for var in widgets:
+			var.trace_add("write", lambda *_args, row_key=row_key: self._refresh_row_preview(row_key))
+
+		ttk.Entry(frame, textvariable=id_var, width=16).grid(row=0, column=1, padx=(0, 4), sticky="we")
+		ttk.Entry(frame, textvariable=purpose_var, width=16).grid(row=0, column=2, padx=(0, 4), sticky="we")
+		for column, var in enumerate((r_var, g_var, b_var, a_var), start=3):
+			ttk.Entry(frame, textvariable=var, width=5, justify="center").grid(row=0, column=column, padx=(0, 4), sticky="we")
+		ttk.Entry(frame, textvariable=height_var, width=8, justify="center").grid(row=0, column=7, padx=(0, 4), sticky="we")
+
+		preview = tk.Canvas(frame, width=34, height=22, highlightthickness=1, highlightbackground=DARK_BORDER, bg=DARK_BG)
+		preview.grid(row=0, column=8, padx=(0, 4), sticky="w")
+		preview_rect = preview.create_rectangle(2, 2, 32, 20, fill=rgba_to_hex(color.rgba), outline=DARK_BORDER)
+
+		row = PaletteEditorRow(
+			row_key=row_key,
+			frame=frame,
+			default_var=self.default_row_var,
+			id_var=id_var,
+			purpose_var=purpose_var,
+			r_var=r_var,
+			g_var=g_var,
+			b_var=b_var,
+			a_var=a_var,
+			height_var=height_var,
+			preview=preview,
+			preview_rect=preview_rect,
+		)
+		remove_button = ttk.Button(frame, text="Remove", command=lambda key=row_key: self.remove_row(key))
+		remove_button.grid(row=0, column=9, sticky="e")
+
+		for column in range(10):
+			frame.grid_columnconfigure(column, weight=1 if column in (1, 2) else 0)
+
+		self._rows.append(row)
+		self._row_id_to_index[row_key] = len(self._rows) - 1
+		row.refresh_preview()
+		return row
+
+	def _refresh_row_preview(self, row_key: str) -> None:
+		index = self._row_id_to_index.get(row_key)
+		if index is None or index >= len(self._rows):
+			return
+		self._rows[index].refresh_preview()
+
+	def _refresh_all_previews(self) -> None:
+		for row in self._rows:
+			row.refresh_preview()
+
+	def remove_row(self, row_key: str) -> None:
+		if len(self._rows) <= 1:
+			messagebox.showwarning("Palette Editor", "The palette must contain at least one color.")
+			return
+
+		index = self._row_id_to_index.get(row_key)
+		if index is None:
+			return
+
+		row = self._rows.pop(index)
+		row.frame.destroy()
+		self._row_id_to_index = {existing.row_key: i for i, existing in enumerate(self._rows)}
+
+		if self.default_row_var.get() == row_key:
+			self.default_row_var.set(self._rows[0].row_key)
+
+	def _collect_palette(self) -> tuple[List[PaletteColor], str]:
+		colors: List[PaletteColor] = []
+		seen_ids: set[str] = set()
+
+		default_row_key = self.default_row_var.get().strip()
+		default_id = ""
+		for row in self._rows:
+			color = row.to_palette_color()
+			if color.id in seen_ids:
+				raise ValueError(f"Duplicate palette id: {color.id}")
+			seen_ids.add(color.id)
+			colors.append(color)
+			if row.row_key == default_row_key:
+				default_id = color.id
+
+		if not colors:
+			raise ValueError("Palette must contain at least one color.")
+
+		if not default_id:
+			default_id = colors[0].id
+		return colors, default_id
+
+	def save_palette(self) -> bool:
+		try:
+			colors, default_id = self._collect_palette()
+			payload = palette_to_payload(colors, default_id)
+			self.app.palette_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+			palette = TilePalette.load(self.app.palette_path)
+		except Exception as exc:
+			messagebox.showerror("Save Palette", f"Could not save palette:\n\n{exc}")
+			return False
+
+		self.app.apply_palette(palette)
+		self.load_palette(palette)
+		self.app.status_var.set(f"Palette saved to {self.app.palette_path.name}.")
+		return True
+
+
 class TilePaintApp:
 	def __init__(self, root: tk.Tk, palette_path: Path = DEFAULT_PALETTE_PATH) -> None:
 		self.root = root
+		self.palette_path = palette_path
 		self.root.title("Tile Paint Tool")
 		self.root.minsize(920, 560)
 		self._apply_dark_theme()
@@ -488,6 +824,7 @@ class TilePaintApp:
 		self.output_root.mkdir(parents=True, exist_ok=True)
 		self.model = TileModel(self.palette)
 		self.current_tile_folder: Path | None = None
+		self._palette_editor_window: PaletteEditorWindow | None = None
 		self._clean_state: tuple | None = None
 		self._gallery_photos: List[tk.PhotoImage] = []
 		self.cell_size = DEFAULT_CELL_SIZE
@@ -636,19 +973,13 @@ class TilePaintApp:
 
 		color_box = ttk.Labelframe(sidebar, text="Colors", padding=8)
 		color_box.pack(fill="x", pady=(0, 10))
-		for palette_color in self.palette.colors:
-			row = ttk.Frame(color_box)
-			row.pack(fill="x", pady=2)
-			swatch = tk.Canvas(row, width=22, height=22, highlightthickness=1, highlightbackground=DARK_BORDER, bg=DARK_BG)
-			swatch.pack(side="left")
-			swatch.create_rectangle(2, 2, 20, 20, fill=rgba_to_hex(palette_color.rgba), outline=DARK_BORDER)
-			ttk.Radiobutton(
-				row,
-				text=palette_color.purpose,
-				value=palette_color.id,
-				variable=self.active_color_id,
-				command=self._refresh_active_color_summary,
-			).pack(side="left", padx=(6, 0))
+		self.colors_frame = ttk.Frame(color_box)
+		self.colors_frame.pack(fill="x")
+		self._rebuild_color_controls()
+		button_row = ttk.Frame(color_box)
+		button_row.pack(fill="x", pady=(8, 0))
+		tk.Button(button_row, text="Add Color", command=self.open_palette_editor).pack(side="left", fill="x", expand=True)
+		tk.Button(button_row, text="Edit Palette", command=self.open_palette_editor).pack(side="left", fill="x", expand=True, padx=(6, 0))
 		ttk.Label(color_box, textvariable=self.active_color_summary_var, wraplength=160, justify="left").pack(anchor="w", pady=(6, 0))
 		ttk.Label(
 			color_box,
@@ -749,6 +1080,42 @@ class TilePaintApp:
 		delta = -1 * (event.delta // 120) if event.delta else 0
 		if delta:
 			self.sidebar_canvas.yview_scroll(delta, "units")
+
+	def _rebuild_color_controls(self) -> None:
+		for child in self.colors_frame.winfo_children():
+			child.destroy()
+
+		for palette_color in self.palette.colors:
+			row = ttk.Frame(self.colors_frame)
+			row.pack(fill="x", pady=2)
+			swatch = tk.Canvas(row, width=22, height=22, highlightthickness=1, highlightbackground=DARK_BORDER, bg=DARK_BG)
+			swatch.pack(side="left")
+			swatch.create_rectangle(2, 2, 20, 20, fill=rgba_to_hex(palette_color.rgba), outline=DARK_BORDER)
+			ttk.Radiobutton(
+				row,
+				text=palette_color.purpose,
+				value=palette_color.id,
+				variable=self.active_color_id,
+				command=self._refresh_active_color_summary,
+			).pack(side="left", padx=(6, 0))
+
+	def open_palette_editor(self) -> None:
+		if self._palette_editor_window is not None and self._palette_editor_window.window.winfo_exists():
+			self._palette_editor_window.lift()
+			self._palette_editor_window.add_color(select_new=True)
+			return
+
+		self._palette_editor_window = PaletteEditorWindow(self, add_new_row=True)
+
+	def apply_palette(self, palette: TilePalette) -> None:
+		self.palette = palette
+		self.model.rebind_palette(palette)
+		if not self.palette.is_valid(self.active_color_id.get()):
+			self.active_color_id.set(self.palette.default_id)
+		self.drag_paint_color_id = None
+		self._rebuild_color_controls()
+		self._refresh_active_color_summary()
+		self.redraw_all()
 
 	def _bind_gallery_mousewheel(self, widget: tk.Widget) -> None:
 		widget.bind("<MouseWheel>", self._on_gallery_mousewheel)
