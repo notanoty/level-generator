@@ -97,13 +97,19 @@ namespace Editor.WFC.TileBuilder
         private static GameObject CreateRectangleCube(GameObject tile, int x, int y, int rectWidth, int rectHeight,
             float cellWidth, float cellDepth, float tileWidth, float tileDepth, float height)
         {
+            int cellsWide = Mathf.Max(rectWidth, Mathf.RoundToInt(tileWidth / cellWidth));
+            int cellsDeep = Mathf.Max(rectHeight, Mathf.RoundToInt(tileDepth / cellDepth));
+            int mirroredX = Mathf.Max(0, cellsWide - x - rectWidth);
+            int mirroredY = Mathf.Max(0, cellsDeep - y - rectHeight);
+
             GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cube.name = $"Pixel_{x}_{y}";
             cube.transform.SetParent(tile.transform, false);
+            cube.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             cube.transform.localPosition = new Vector3(
-                x * cellWidth / 10f - tileWidth * 0.5f + cellWidth * rectWidth * 0.05f + 45,
+                mirroredX * cellWidth / 10f - tileWidth * 0.5f + cellWidth * rectWidth * 0.05f + 45,
                 Mathf.Max(0f, height) * 0.5f,
-                y * cellDepth / 10f - tileDepth * 0.5f + cellDepth * rectHeight * 0.05f + 45);
+                mirroredY * cellDepth / 10f - tileDepth * 0.5f + cellDepth * rectHeight * 0.05f + 45);
             cube.transform.localScale = new Vector3(cellWidth * rectWidth / 10f, Mathf.Max(0f, height), cellDepth * rectHeight / 10f);
             return cube;
         }
