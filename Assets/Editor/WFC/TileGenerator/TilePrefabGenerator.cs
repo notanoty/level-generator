@@ -137,7 +137,7 @@ namespace Editor.WFC
                 string prefabPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.prefab";
                 string variantTexturePath = $"{GeneratedPrefabRoot}/{variantPrefabName}_texture.asset";
                 string variantMaterialPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.mat";
-                Texture2D variantTexture = GetOrCreateRotatedTexture(variantTexturePath, texture, finalRotation);
+                Texture2D variantTexture = GetOrCreateRotatedTexture(variantTexturePath, texture, GetTextureRotation(finalRotation));
                 Material variantMaterial = GetOrCreateTileMaterial(variantMaterialPath, variantPrefabName, variantTexture);
 
                 GameObject prefabContents = null;
@@ -513,6 +513,13 @@ namespace Editor.WFC
         private static string GetPrefabVariantName(string prefabName, int rotationSteps)
         {
             return $"{prefabName}_r{NormalizeRotation(rotationSteps)}";
+        }
+
+        private static int GetTextureRotation(int logicalRotation)
+        {
+            // The exported tile PNGs are oriented opposite to the logical tile directions,
+            // so quarter-turns must be mirrored for the visual texture bake only.
+            return NormalizeRotation(logicalRotation == 1 ? 3 : logicalRotation == 3 ? 1 : logicalRotation);
         }
 
         private static Material GetOrCreateTileMaterial(string materialPath, string materialName, Texture2D texture)
