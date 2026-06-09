@@ -257,10 +257,10 @@ namespace WFC
                 return null;
             }
 
-            foreach (var tile in selectedPossibilities)
-            {
-                Debug.Log("Possible tile: " + tile.name);
-            }
+            // foreach (var tile in selectedPossibilities)
+            // {
+            //     Debug.Log("Possible tile: " + tile.name);
+            // }
 
             Tile tileChoice = selectedPossibilities[Random.Range(0, selectedPossibilities.Count)];
             tilePossibilities[x, y] = new List<Tile> { tileChoice };
