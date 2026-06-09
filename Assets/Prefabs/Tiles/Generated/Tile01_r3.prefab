@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1001 &659342788269265313
+--- !u!1001 &4463713879462458453
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -11,7 +11,7 @@ PrefabInstance:
     - target: {fileID: 91365878708343121, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 739c1657bf6888d49994c1a662ca582f, type: 2}
+      objectReference: {fileID: 2100000, guid: c5c2fd2e463afcb41a1278eec63786a3, type: 2}
     - target: {fileID: 1045921529045530020, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -55,7 +55,7 @@ PrefabInstance:
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: texture
       value: 
-      objectReference: {fileID: 2800000, guid: 0b8a129cfa59db9439ea9ee58b12a3ca, type: 2}
+      objectReference: {fileID: 2800000, guid: 569af82665646b04fbc83c22390e417e, type: 2}
     - target: {fileID: 1249351916666430347, guid: 4b479718ce257644b81b51b752051f05, type: 3}
       propertyPath: rotation
       value: 3

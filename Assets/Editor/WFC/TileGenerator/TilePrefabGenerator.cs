@@ -135,8 +135,8 @@ namespace Editor.WFC
                 int finalRotation = NormalizeRotation((component != null ? component.rotation : 0) + rotationStep);
                 string variantPrefabName = GetPrefabVariantName(prefabName, finalRotation);
                 string prefabPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.prefab";
-                string variantTexturePath = $"{GeneratedPrefabRoot}/{variantPrefabName}_texture.asset";
-                string variantMaterialPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.mat";
+                string variantTexturePath = $"{tileDataFolder}/{variantPrefabName}_texture.asset";
+                string variantMaterialPath = $"{tileDataFolder}/{variantPrefabName}.mat";
                 Texture2D variantTexture = GetOrCreateRotatedTexture(variantTexturePath, texture, GetTextureRotation(finalRotation));
                 Material variantMaterial = GetOrCreateTileMaterial(variantMaterialPath, variantPrefabName, variantTexture);
 

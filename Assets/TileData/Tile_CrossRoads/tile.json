@@ -4263,10 +4263,7 @@
       ],
       "rotation": 0,
       "allowed_rotation_steps": [
-        0,
-        1,
-        2,
-        3
+        0
       ],
       "grid_size": [
         100,
