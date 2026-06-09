@@ -486,10 +486,10 @@ namespace WFC
             if (instance != null)
             {
                 instance.transform.position = transform.position + position;
-                instance.transform.rotation = tile.transform.rotation;
 
                 Transform container = GetOrCreateContainer();
                 instance.transform.SetParent(container, true);
+                instance.transform.rotation = Quaternion.identity;
                 if (spawnedTiles != null)
                 {
                     spawnedTiles[x, y] = instance;

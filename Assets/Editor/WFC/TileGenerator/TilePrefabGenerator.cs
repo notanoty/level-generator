@@ -128,7 +128,6 @@ namespace Editor.WFC
 
             TileComponentData component = data.mock_prefab != null ? data.mock_prefab.tile_component : null;
             List<int> rotationSteps = BuildAllowedRotationSteps(component, component == null || component.allow_rotation_variants);
-            Material tileMaterial = GetOrCreateTileMaterial(tileDataFolder, texture);
 
             int generatedVariants = 0;
             foreach (int rotationStep in rotationSteps)
@@ -136,6 +135,10 @@ namespace Editor.WFC
                 int finalRotation = NormalizeRotation((component != null ? component.rotation : 0) + rotationStep);
                 string variantPrefabName = GetPrefabVariantName(prefabName, finalRotation);
                 string prefabPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.prefab";
+                string variantTexturePath = $"{GeneratedPrefabRoot}/{variantPrefabName}_texture.asset";
+                string variantMaterialPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.mat";
+                Texture2D variantTexture = GetOrCreateRotatedTexture(variantTexturePath, texture, finalRotation);
+                Material variantMaterial = GetOrCreateTileMaterial(variantMaterialPath, variantPrefabName, variantTexture);
 
                 GameObject prefabContents = null;
                 try
@@ -149,7 +152,6 @@ namespace Editor.WFC
 
                     prefabContents.name = variantPrefabName;
                     prefabContents.tag = "Untagged";
-                    prefabContents.transform.localRotation = Quaternion.Euler(0f, 90f * finalRotation, 0f);
 
                     Tile tile = prefabContents.GetComponent<Tile>();
                     if (tile == null)
@@ -158,12 +160,12 @@ namespace Editor.WFC
                         continue;
                     }
 
-                    if (tileMaterial != null)
+                    if (variantMaterial != null)
                     {
-                        ApplyMaterialToRenderers(prefabContents, tileMaterial);
+                        ApplyMaterialToRenderers(prefabContents, variantMaterial);
                     }
 
-                    ApplyTileData(tile, data, tileDataFolder, finalRotation);
+                    ApplyTileData(tile, data, tileDataFolder, finalRotation, variantTexture);
                     tile.allowRotationVariants = false;
                     tile.allowedRotationSteps = new List<int> { 0 };
 
@@ -207,7 +209,7 @@ namespace Editor.WFC
             }
         }
 
-        private static void ApplyTileData(Tile tile, TileDataFile data, string tileDataFolder, int rotationSteps)
+        private static void ApplyTileData(Tile tile, TileDataFile data, string tileDataFolder, int rotationSteps, Texture2D texture)
         {
             MockPrefabData mock = data.mock_prefab;
             TileComponentData component = mock != null ? mock.tile_component : null;
@@ -215,6 +217,7 @@ namespace Editor.WFC
             tile.connections = ResolveConnections(data, component, tileDataFolder);
             tile.rotation = NormalizeRotation(rotationSteps);
             tile.allowRotationVariants = component == null || component.allow_rotation_variants;
+            tile.texture = texture;
 
             tile.allowedRotationSteps = BuildAllowedRotationSteps(component, tile.allowRotationVariants);
             tile.gridSize = ResolveGridSize(component, data);
@@ -512,9 +515,8 @@ namespace Editor.WFC
             return $"{prefabName}_r{NormalizeRotation(rotationSteps)}";
         }
 
-        private static Material GetOrCreateTileMaterial(string tileDataFolder, Texture2D texture)
+        private static Material GetOrCreateTileMaterial(string materialPath, string materialName, Texture2D texture)
         {
-            string materialPath = Path.Combine(tileDataFolder, "tile.mat").Replace('\\', '/');
             Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             if (material != null)
             {
@@ -534,13 +536,104 @@ namespace Editor.WFC
             }
 
             Material generated = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            generated.name = Path.GetFileName(tileDataFolder);
+            generated.name = materialName;
             generated.SetTexture(BaseMapId, texture);
             generated.SetTexture(MainTexId, texture);
             generated.mainTexture = texture;
 
             AssetDatabase.CreateAsset(generated, materialPath);
             return generated;
+        }
+
+        private static Texture2D GetOrCreateRotatedTexture(string texturePath, Texture2D sourceTexture, int rotationSteps)
+        {
+            if (sourceTexture == null)
+            {
+                return null;
+            }
+
+            int normalizedRotation = NormalizeRotation(rotationSteps);
+            if (normalizedRotation == 0)
+            {
+                return sourceTexture;
+            }
+
+            Texture2D rotatedTexture = RotateTexture(sourceTexture, normalizedRotation);
+            Texture2D existingTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            if (existingTexture != null)
+            {
+                EditorUtility.CopySerialized(rotatedTexture, existingTexture);
+                EditorUtility.SetDirty(existingTexture);
+                UnityEngine.Object.DestroyImmediate(rotatedTexture);
+                return existingTexture;
+            }
+
+            rotatedTexture.name = Path.GetFileNameWithoutExtension(texturePath);
+            AssetDatabase.CreateAsset(rotatedTexture, texturePath);
+            return rotatedTexture;
+        }
+
+        private static Texture2D RotateTexture(Texture2D sourceTexture, int rotationSteps)
+        {
+            int normalizedRotation = NormalizeRotation(rotationSteps);
+            if (normalizedRotation == 0)
+            {
+                return sourceTexture;
+            }
+
+            int sourceWidth = sourceTexture.width;
+            int sourceHeight = sourceTexture.height;
+            bool swapDimensions = normalizedRotation == 1 || normalizedRotation == 3;
+            int destinationWidth = swapDimensions ? sourceHeight : sourceWidth;
+            int destinationHeight = swapDimensions ? sourceWidth : sourceHeight;
+
+            Texture2D rotatedTexture = new Texture2D(destinationWidth, destinationHeight, TextureFormat.RGBA32, false);
+            rotatedTexture.filterMode = sourceTexture.filterMode;
+            rotatedTexture.wrapMode = sourceTexture.wrapMode;
+            rotatedTexture.wrapModeU = sourceTexture.wrapModeU;
+            rotatedTexture.wrapModeV = sourceTexture.wrapModeV;
+            rotatedTexture.anisoLevel = sourceTexture.anisoLevel;
+            rotatedTexture.name = sourceTexture.name;
+
+            Color32[] sourcePixels = sourceTexture.GetPixels32();
+            Color32[] rotatedPixels = new Color32[destinationWidth * destinationHeight];
+
+            for (int y = 0; y < sourceHeight; y++)
+            {
+                for (int x = 0; x < sourceWidth; x++)
+                {
+                    int sourceIndex = (y * sourceWidth) + x;
+                    int destinationX;
+                    int destinationY;
+
+                    switch (normalizedRotation)
+                    {
+                        case 1:
+                            destinationX = sourceHeight - 1 - y;
+                            destinationY = x;
+                            break;
+                        case 2:
+                            destinationX = sourceWidth - 1 - x;
+                            destinationY = sourceHeight - 1 - y;
+                            break;
+                        case 3:
+                            destinationX = y;
+                            destinationY = sourceWidth - 1 - x;
+                            break;
+                        default:
+                            destinationX = x;
+                            destinationY = y;
+                            break;
+                    }
+
+                    int destinationIndex = (destinationY * destinationWidth) + destinationX;
+                    rotatedPixels[destinationIndex] = sourcePixels[sourceIndex];
+                }
+            }
+
+            rotatedTexture.SetPixels32(rotatedPixels);
+            rotatedTexture.Apply(false, false);
+            return rotatedTexture;
         }
 
         private static void EnsureTextureReadable(string texturePath)
