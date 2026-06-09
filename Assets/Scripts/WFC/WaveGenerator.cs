@@ -60,6 +60,7 @@ namespace WFC
         private int _startTileX = -1;
         private int _startTileY = -1;
         private bool _hasStartTile;
+        private int _placementOrder;
 
         public void Generate()
         {
@@ -88,6 +89,7 @@ namespace WFC
             FillTilePossibilitiesArray();
             collapsedTiles = new Tile[width, height];
             spawnedTiles = new GameObject[width, height];
+            _placementOrder = 0;
             
             SetStartTile();
 
@@ -194,6 +196,8 @@ namespace WFC
         {
             foreach (Tile tile in tilePrefabs)
             {
+                tile.CalculatePossibleTiles(tilePrefabs);
+                
                 if (tile == null) continue;
 
                 tile.PossibleTilesByDirection.Clear();
@@ -257,10 +261,6 @@ namespace WFC
                 return null;
             }
 
-            // foreach (var tile in selectedPossibilities)
-            // {
-            //     Debug.Log("Possible tile: " + tile.name);
-            // }
 
             Tile tileChoice = selectedPossibilities[Random.Range(0, selectedPossibilities.Count)];
             tilePossibilities[x, y] = new List<Tile> { tileChoice };
@@ -490,12 +490,44 @@ namespace WFC
                 Transform container = GetOrCreateContainer();
                 instance.transform.SetParent(container, true);
                 instance.transform.rotation = Quaternion.identity;
+
+                CreatePlacementCube(instance.transform);
+
                 if (spawnedTiles != null)
                 {
                     spawnedTiles[x, y] = instance;
                 }
                 collapsedTiles[x, y] = tile;
                 ValidateConnectionsAt(x, y);
+
+            }
+        }
+
+        private void CreatePlacementCube(Transform parent)
+        {
+            if (parent == null)
+            {
+                return;
+            }
+
+            int placementIndex = ++_placementOrder;
+            GameObject placementCube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            placementCube.name = $"Placement_{placementIndex}";
+            placementCube.transform.SetParent(parent, false);
+            placementCube.transform.localPosition = Vector3.zero;
+            placementCube.transform.localRotation = Quaternion.identity;
+
+            float markerSize = Mathf.Max(0.05f, Mathf.Min(tileSize.x, tileSize.y) * 0.15f);
+            placementCube.transform.localScale = new Vector3(0.1f, 0.1f, 0.1f);
+
+            Collider placementCollider = placementCube.GetComponent<Collider>();
+            if (placementCollider != null)
+            {
+#if UNITY_EDITOR
+                DestroyImmediate(placementCollider);
+#else
+                Destroy(placementCollider);
+#endif
 
             }
         }

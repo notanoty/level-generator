@@ -44,7 +44,7 @@ namespace WFC
         [Tooltip("Minimum distance to grid before snapping is applied (prevents tiny adjustments).")]
         public float snapThreshold = 0.001f;
 
-        public Dictionary<Direction, List<Tile>> PossibleTilesByDirection = new Dictionary<Direction, List<Tile>>();
+        [SerializeField] public Dictionary<Direction, List<Tile>> PossibleTilesByDirection = new Dictionary<Direction, List<Tile>>();
 
         public Dictionary<Direction, List<Tile>> ImpossibleTilesByDirection = new Dictionary<Direction, List<Tile>>();
 
