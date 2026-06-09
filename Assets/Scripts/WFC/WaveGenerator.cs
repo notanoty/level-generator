@@ -42,11 +42,24 @@ namespace WFC
         [Tooltip("If true, clear any previously generated tiles in the container before generating.")]
         public bool clearContainerBeforeGenerate = true;
 
+        [Header("Debug")]
+        [Tooltip("If true, spawn a small cube marker at each collapsed tile position.")]
+        public bool showCollapseMarkers = true;
+
+        [Tooltip("Relative size of the debug marker cube compared to the tile size.")]
+        [Range(0.01f, 1f)]
+        public float collapseMarkerScale = 0.1f;
+        
+        public int maxTileDepth;
+
         private List<Tile> tilePrefabs = new List<Tile>();
 
         private List<Tile>[,] tilePossibilities;
         private Tile[,] collapsedTiles;
         private GameObject[,] spawnedTiles;
+        private int _startTileX = -1;
+        private int _startTileY = -1;
+        private bool _hasStartTile;
 
         public void Generate()
         {
@@ -78,7 +91,7 @@ namespace WFC
             
             SetStartTile();
 
-            for (int i = 0; i < 1000; i++)
+            for (int i = 0; i < maxTileDepth; i++)
             {
                 if (!HandleWaveFunctionCollapse())
                 {
@@ -150,9 +163,7 @@ namespace WFC
             {
                 for (int y = 0; y < height; y++)
                 {
-                    List<Tile> filtered = new List<Tile>(selection);
-                    FilterOutwardConnections(filtered, x, y);
-                    tilePossibilities[x, y] = filtered;
+                    tilePossibilities[x, y] = new List<Tile>(selection);
                 }
             }
         }
@@ -161,8 +172,8 @@ namespace WFC
         {
             if (candidates == null) return;
 
-            bool atNorth = y == 0;
-            bool atSouth = y == height - 1;
+            bool atNorth = y == height - 1;
+            bool atSouth = y == 0;
             bool atWest = x == 0;
             bool atEast = x == width - 1;
 
@@ -178,7 +189,7 @@ namespace WFC
                 (atEast && DirectionUtils.Has(tile.connections, Direction.East))
             );
         }
-        
+
         private void SetCalculationForPossibleTiles()
         {
             foreach (Tile tile in tilePrefabs)
@@ -214,6 +225,9 @@ namespace WFC
         {
             int y = Random.Range(0, height);
             int x = Random.Range(0, width);
+            _startTileX = x;
+            _startTileY = y;
+            _hasStartTile = true;
             Tile tile;
             if (baseTilePrefab != null)
             {
@@ -260,24 +274,81 @@ namespace WFC
         {
             if (tile == null) return;
 
-            if (y - 1 >= 0 && tilePossibilities[x, y - 1].Count > 0)
+            if (DirectionUtils.Has(tile.connections, Direction.North)
+                && y + 1 < height 
+                && tilePossibilities[x, y + 1].Count > 0)
             {
-                tilePossibilities[x, y - 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.North].Contains(t));
+                if (showCollapseMarkers)
+                {
+                    CreateCollapseMarker(x, y + 1, Direction.North, GetOrCreateContainer());
+                }
+
+                tilePossibilities[x, y + 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.North].Contains(t));
             }
 
-            if (y + 1 < height && tilePossibilities[x, y + 1].Count > 0)
+            if (DirectionUtils.Has(tile.connections, Direction.South)
+                && y - 1 >= 0
+                && tilePossibilities[x, y - 1].Count > 0)
             {
-                tilePossibilities[x, y + 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.South].Contains(t));
+                if (showCollapseMarkers)
+                {
+                    CreateCollapseMarker(x, y - 1, Direction.South, GetOrCreateContainer());
+                }
+
+                tilePossibilities[x, y - 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.South].Contains(t));
             }
 
-            if (x - 1 >= 0 && tilePossibilities[x - 1, y].Count > 0)
+            if (DirectionUtils.Has(tile.connections, Direction.West)
+                && x - 1 >= 0 
+                && tilePossibilities[x - 1, y].Count > 0)
             {
+                if (showCollapseMarkers)
+                {
+                    CreateCollapseMarker(x - 1, y, Direction.West, GetOrCreateContainer());
+                }
+
                 tilePossibilities[x - 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.West].Contains(t));
             }
 
-            if (x + 1 < width && tilePossibilities[x + 1, y].Count > 0)
+            if (DirectionUtils.Has(tile.connections, Direction.East)
+                && x + 1 < width
+                && tilePossibilities[x + 1, y].Count > 0)
             {
+                if (showCollapseMarkers)
+                {
+                    CreateCollapseMarker(x + 1, y, Direction.East, GetOrCreateContainer());
+                }
+
                 tilePossibilities[x + 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.East].Contains(t));
+            }
+        }
+
+        private void CreateCollapseMarker(int x, int y, Direction direction, Transform container)
+        {
+            GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            marker.name = $"({x}, {y})_{direction}";
+
+            marker.transform.position = transform.position + new Vector3(x * tileSize.x, 0f, y * tileSize.y);
+
+            float markerSize = Mathf.Max(0.01f, Mathf.Min(tileSize.x, tileSize.y) * collapseMarkerScale);
+            marker.transform.localScale = new Vector3(markerSize, markerSize, markerSize);
+
+            Collider markerCollider = marker.GetComponent<Collider>();
+            if (markerCollider != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(markerCollider);
+                }
+                else
+                {
+                    DestroyImmediate(markerCollider);
+                }
+            }
+
+            if (container != null)
+            {
+                marker.transform.SetParent(container, true);
             }
         }
         
@@ -288,6 +359,7 @@ namespace WFC
             
             List<Tile> leastEntropyCell = null;
             int leastEntropyCellX = 0, leastEntropyCellY = 0;
+            int leastEntropyDistanceToStart = int.MaxValue;
             for (int x = 0; x < width; x++)
             {
                 for (int y = 0; y < height; y++)
@@ -297,7 +369,7 @@ namespace WFC
                         continue;
                     }
 
-                    ConstrainCellToCollapsedNeighbors(x, y);
+                    // ConstrainCellToCollapsedNeighbors(x, y);
                     List<Tile> cell = tilePossibilities[x, y];
 
                     int cellCount = cell.Count;
@@ -314,11 +386,18 @@ namespace WFC
                         collapsedSomething = true;
                         continue;
                     }
-                    if (leastEntropyCell == null || cellCount < leastEntropyCell.Count)
+                    int distanceToStart = _hasStartTile
+                        ? Mathf.Abs(x - _startTileX) + Mathf.Abs(y - _startTileY)
+                        : int.MaxValue;
+
+                    if (leastEntropyCell == null
+                        || cellCount < leastEntropyCell.Count
+                        || (cellCount == leastEntropyCell.Count && distanceToStart < leastEntropyDistanceToStart))
                     {
                         leastEntropyCell = cell;
                         leastEntropyCellX = x;
                         leastEntropyCellY = y;
+                        leastEntropyDistanceToStart = distanceToStart;
                     }
                 }
             }
@@ -353,15 +432,15 @@ namespace WFC
             }
 
             // Remove any tiles that would not match already-collapsed neighbors.
-            if (y - 1 >= 0 && collapsedTiles[x, y - 1] != null)
-            {
-                Tile neighbor = collapsedTiles[x, y - 1];
-                candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.North));
-            }
-
             if (y + 1 < height && collapsedTiles[x, y + 1] != null)
             {
                 Tile neighbor = collapsedTiles[x, y + 1];
+                candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.North));
+            }
+
+            if (y - 1 >= 0 && collapsedTiles[x, y - 1] != null)
+            {
+                Tile neighbor = collapsedTiles[x, y - 1];
                 candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.South));
             }
 
@@ -417,7 +496,7 @@ namespace WFC
                 }
                 collapsedTiles[x, y] = tile;
                 ValidateConnectionsAt(x, y);
-                
+
             }
         }
 
@@ -434,9 +513,9 @@ namespace WFC
                 return;
             }
 
-            ValidateNeighborConnection(center, x, y, x, y - 1, Direction.North);
+            ValidateNeighborConnection(center, x, y, x, y + 1, Direction.North);
             ValidateNeighborConnection(center, x, y, x + 1, y, Direction.East);
-            ValidateNeighborConnection(center, x, y, x, y + 1, Direction.South);
+            ValidateNeighborConnection(center, x, y, x, y - 1, Direction.South);
             ValidateNeighborConnection(center, x, y, x - 1, y, Direction.West);
         }
 
