@@ -139,7 +139,9 @@ namespace WFC
 
             Direction thisCon = GetRotatedConnections();
             Direction otherCon = other.GetRotatedConnections();
-            bool byDirection = DirectionUtils.Has(thisCon, dir) && DirectionUtils.Has(otherCon, DirectionUtils.Opposite(dir));
+            bool thisHasConnector = DirectionUtils.Has(thisCon, dir);
+            bool otherHasConnector = DirectionUtils.Has(otherCon, DirectionUtils.Opposite(dir));
+            bool byDirection = thisHasConnector == otherHasConnector;
 
             ConnectionTypeMask allowedFromThis = GetAllowedTypesForDirection(dir);
             ConnectionTypeMask allowedFromOther = other.GetAllowedTypesForDirection(DirectionUtils.Opposite(dir));

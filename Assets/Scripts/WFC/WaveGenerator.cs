@@ -61,6 +61,13 @@ namespace WFC
         private int _startTileY = -1;
         private bool _hasStartTile;
         private int _placementOrder;
+        private static readonly Direction[] PropagationDirections =
+        {
+            Direction.North,
+            Direction.East,
+            Direction.South,
+            Direction.West
+        };
 
         public void Generate()
         {
@@ -165,7 +172,9 @@ namespace WFC
             {
                 for (int y = 0; y < height; y++)
                 {
-                    tilePossibilities[x, y] = new List<Tile>(selection);
+                    List<Tile> candidates = new List<Tile>(selection);
+                    FilterOutwardConnections(candidates, x, y);
+                    tilePossibilities[x, y] = candidates;
                 }
             }
         }
@@ -185,10 +194,10 @@ namespace WFC
             }
 
             candidates.RemoveAll(tile => tile == null ||
-                (atNorth && DirectionUtils.Has(tile.connections, Direction.North)) ||
-                (atSouth && DirectionUtils.Has(tile.connections, Direction.South)) ||
-                (atWest && DirectionUtils.Has(tile.connections, Direction.West)) ||
-                (atEast && DirectionUtils.Has(tile.connections, Direction.East))
+                (atNorth && tile.ConnectsTo(Direction.North)) ||
+                (atSouth && tile.ConnectsTo(Direction.South)) ||
+                (atWest && tile.ConnectsTo(Direction.West)) ||
+                (atEast && tile.ConnectsTo(Direction.East))
             );
         }
 
@@ -247,55 +256,120 @@ namespace WFC
 
         private void CollapseNearbyTiles(Tile tile, int x, int y)
         {
-            if (tile == null) return;
-
-            if (DirectionUtils.Has(tile.connections, Direction.North)
-                && y + 1 < height 
-                && tilePossibilities[x, y + 1].Count > 0)
+            if (tile == null || tilePossibilities == null)
             {
-                if (showCollapseMarkers)
-                {
-                    CreateCollapseMarker(x, y + 1, Direction.North, GetOrCreateContainer());
-                }
-
-                tilePossibilities[x, y + 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.North].Contains(t));
+                return;
             }
 
-            if (DirectionUtils.Has(tile.connections, Direction.South)
-                && y - 1 >= 0
-                && tilePossibilities[x, y - 1].Count > 0)
-            {
-                if (showCollapseMarkers)
-                {
-                    CreateCollapseMarker(x, y - 1, Direction.South, GetOrCreateContainer());
-                }
+            PropagateConstraintsFrom(x, y);
+        }
 
-                tilePossibilities[x, y - 1].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.South].Contains(t));
+        private void PropagateConstraintsFrom(int startX, int startY)
+        {
+            if (tilePossibilities == null)
+            {
+                return;
             }
 
-            if (DirectionUtils.Has(tile.connections, Direction.West)
-                && x - 1 >= 0 
-                && tilePossibilities[x - 1, y].Count > 0)
+            Queue<Vector2Int> queue = new Queue<Vector2Int>();
+            bool[] queued = new bool[width * height];
+
+            Enqueue(startX, startY);
+
+            while (queue.Count > 0)
             {
-                if (showCollapseMarkers)
+                Vector2Int cell = queue.Dequeue();
+                queued[GetCellIndex(cell.x, cell.y)] = false;
+
+                List<Tile> sourceCandidates = tilePossibilities[cell.x, cell.y];
+                if (sourceCandidates == null || sourceCandidates.Count == 0)
                 {
-                    CreateCollapseMarker(x - 1, y, Direction.West, GetOrCreateContainer());
+                    continue;
                 }
 
-                tilePossibilities[x - 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.West].Contains(t));
+                for (int i = 0; i < PropagationDirections.Length; i++)
+                {
+                    Direction direction = PropagationDirections[i];
+                    Vector2Int neighbor = GetNeighbor(cell.x, cell.y, direction);
+                    if (!IsInBounds(neighbor.x, neighbor.y))
+                    {
+                        continue;
+                    }
+
+                    List<Tile> neighborCandidates = tilePossibilities[neighbor.x, neighbor.y];
+                    if (neighborCandidates == null || neighborCandidates.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    int beforeCount = neighborCandidates.Count;
+                    neighborCandidates.RemoveAll(candidate => !IsCompatibleWithAnySource(sourceCandidates, candidate, direction));
+
+                    if (neighborCandidates.Count != beforeCount)
+                    {
+                        if (showCollapseMarkers)
+                        {
+                            CreateCollapseMarker(neighbor.x, neighbor.y, direction, GetOrCreateContainer());
+                        }
+
+                        if (neighborCandidates.Count > 0 && !queued[GetCellIndex(neighbor.x, neighbor.y)])
+                        {
+                            Enqueue(neighbor.x, neighbor.y);
+                        }
+                    }
+                }
             }
 
-            if (DirectionUtils.Has(tile.connections, Direction.East)
-                && x + 1 < width
-                && tilePossibilities[x + 1, y].Count > 0)
+            void Enqueue(int x, int y)
             {
-                if (showCollapseMarkers)
+                int index = GetCellIndex(x, y);
+                if (!IsInBounds(x, y) || queued[index])
                 {
-                    CreateCollapseMarker(x + 1, y, Direction.East, GetOrCreateContainer());
+                    return;
                 }
 
-                tilePossibilities[x + 1, y].RemoveAll(t => tile.ImpossibleTilesByDirection[Direction.East].Contains(t));
+                queue.Enqueue(new Vector2Int(x, y));
+                queued[index] = true;
             }
+        }
+
+        private static bool IsCompatibleWithAnySource(List<Tile> sourceCandidates, Tile candidate, Direction direction)
+        {
+            if (candidate == null || sourceCandidates == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < sourceCandidates.Count; i++)
+            {
+                Tile source = sourceCandidates[i];
+                if (source != null && source.IsCompatibleWith(candidate, direction))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static Vector2Int GetNeighbor(int x, int y, Direction direction)
+        {
+            if (direction == Direction.North) return new Vector2Int(x, y + 1);
+            if (direction == Direction.East) return new Vector2Int(x + 1, y);
+            if (direction == Direction.South) return new Vector2Int(x, y - 1);
+            if (direction == Direction.West) return new Vector2Int(x - 1, y);
+
+            return new Vector2Int(x, y);
+        }
+
+        private bool IsInBounds(int x, int y)
+        {
+            return x >= 0 && x < width && y >= 0 && y < height;
+        }
+
+        private int GetCellIndex(int x, int y)
+        {
+            return x + (y * width);
         }
 
         private void CreateCollapseMarker(int x, int y, Direction direction, Transform container)
@@ -347,8 +421,8 @@ namespace WFC
                     int cellCount = cell.Count;
                     if (cellCount == 0)
                     {
-                        Debug.LogWarning("Cell (" + x + ", " + y + ") has no possibilities left. Skipping.");
-                        continue;
+                        Debug.LogWarning("Cell (" + x + ", " + y + ") has no possibilities left. Generation cannot continue.");
+                        return false;
                     }
 
                     if (cellCount < leastEntropyCount)
