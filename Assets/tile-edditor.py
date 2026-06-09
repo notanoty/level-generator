@@ -559,8 +559,24 @@ class TilePaintApp:
 		content = ttk.Frame(container)
 		content.pack(fill="both", expand=True)
 
-		sidebar = ttk.Frame(content)
-		sidebar.pack(side="left", fill="y", padx=(0, 10))
+		sidebar_outer = ttk.Frame(content)
+		sidebar_outer.pack(side="left", fill="y", padx=(0, 10))
+
+		self.sidebar_canvas = tk.Canvas(sidebar_outer, width=220, highlightthickness=0, bg=DARK_BG)
+		sidebar_scrollbar = ttk.Scrollbar(sidebar_outer, orient="vertical", command=self.sidebar_canvas.yview)
+		self.sidebar_inner = ttk.Frame(self.sidebar_canvas)
+		self.sidebar_inner.bind(
+			"<Configure>",
+			lambda _event: self.sidebar_canvas.configure(scrollregion=self.sidebar_canvas.bbox("all")),
+		)
+		self._sidebar_window_id = self.sidebar_canvas.create_window((0, 0), window=self.sidebar_inner, anchor="nw")
+		self.sidebar_canvas.configure(yscrollcommand=sidebar_scrollbar.set)
+		self.sidebar_canvas.pack(side="left", fill="y", expand=False)
+		sidebar_scrollbar.pack(side="right", fill="y")
+		self.sidebar_canvas.bind("<Configure>", self._on_sidebar_canvas_configure)
+		self.sidebar_canvas.bind("<MouseWheel>", self._on_sidebar_mousewheel)
+
+		sidebar = self.sidebar_inner
 
 		connections_box = ttk.Labelframe(sidebar, text="Directions", padding=8)
 		connections_box.pack(fill="x", pady=(0, 10))
@@ -725,6 +741,14 @@ class TilePaintApp:
 
 	def _on_gallery_canvas_configure(self, event: tk.Event) -> None:
 		self.gallery_canvas.itemconfigure(self._gallery_window_id, width=event.width)
+
+	def _on_sidebar_canvas_configure(self, event: tk.Event) -> None:
+		self.sidebar_canvas.itemconfigure(self._sidebar_window_id, width=event.width)
+
+	def _on_sidebar_mousewheel(self, event: tk.Event) -> None:
+		delta = -1 * (event.delta // 120) if event.delta else 0
+		if delta:
+			self.sidebar_canvas.yview_scroll(delta, "units")
 
 	def _bind_gallery_mousewheel(self, widget: tk.Widget) -> None:
 		widget.bind("<MouseWheel>", self._on_gallery_mousewheel)

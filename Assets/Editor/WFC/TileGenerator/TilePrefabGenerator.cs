@@ -18,7 +18,7 @@ namespace Editor.WFC
     {
         private const string TileDataRoot = "Assets/TileData";
         private const string GeneratedPrefabRoot = "Assets/Prefabs/Tiles/Generated";
-        private const string BasePrefabPath = "Assets/Prefabs/Tiles/BaseTile.prefab";
+        private const string BasePrefabPath = "Assets/Prefabs/BaseTile.prefab";
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
         private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
 
