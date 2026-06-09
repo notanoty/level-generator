@@ -197,31 +197,6 @@ namespace WFC
             foreach (Tile tile in tilePrefabs)
             {
                 tile.CalculatePossibleTiles(tilePrefabs);
-                
-                // if (tile == null) continue;
-                //
-                // tile.PossibleTilesByDirection.Clear();
-                // tile.ImpossibleTilesByDirection.Clear();
-                //
-                // foreach (Direction direction in CardinalDirections)
-                // {
-                //     tile.PossibleTilesByDirection[direction] = new List<Tile>();
-                //     tile.ImpossibleTilesByDirection[direction] = new List<Tile>();
-                //
-                //     foreach (Tile other in tilePrefabs)
-                //     {
-                //         bool isCompatible = IsCompatibleWith(tile, other, direction);
-                //
-                //         if (isCompatible)
-                //         {
-                //             tile.PossibleTilesByDirection[direction].Add(other);
-                //         }
-                //         else
-                //         {
-                //             tile.ImpossibleTilesByDirection[direction].Add(other);
-                //         }
-                //     }
-                // }
             }
         }
 
@@ -369,7 +344,6 @@ namespace WFC
                         continue;
                     }
 
-                    // ConstrainCellToCollapsedNeighbors(x, y);
                     List<Tile> cell = tilePossibilities[x, y];
 
                     int cellCount = cell.Count;
@@ -418,44 +392,6 @@ namespace WFC
             return false;
         }
 
-        // private void ConstrainCellToCollapsedNeighbors(int x, int y)
-        // {
-        //     if (tilePossibilities == null || collapsedTiles == null)
-        //     {
-        //         return;
-        //     }
-        //
-        //     List<Tile> candidates = tilePossibilities[x, y];
-        //     if (candidates == null || candidates.Count == 0)
-        //     {
-        //         return;
-        //     }
-        //
-        //     // Remove any tiles that would not match already-collapsed neighbors.
-        //     if (y + 1 < height && collapsedTiles[x, y + 1] != null)
-        //     {
-        //         Tile neighbor = collapsedTiles[x, y + 1];
-        //         candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.North));
-        //     }
-        //
-        //     if (y - 1 >= 0 && collapsedTiles[x, y - 1] != null)
-        //     {
-        //         Tile neighbor = collapsedTiles[x, y - 1];
-        //         candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.South));
-        //     }
-        //
-        //     if (x - 1 >= 0 && collapsedTiles[x - 1, y] != null)
-        //     {
-        //         Tile neighbor = collapsedTiles[x - 1, y];
-        //         candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.West));
-        //     }
-        //
-        //     if (x + 1 < width && collapsedTiles[x + 1, y] != null)
-        //     {
-        //         Tile neighbor = collapsedTiles[x + 1, y];
-        //         candidates.RemoveAll(v => !IsCompatibleWith(v, neighbor, Direction.East));
-        //     }
-        // }
 
         private void PlaceTile(Tile tile, int x, int y)
         {
@@ -498,8 +434,6 @@ namespace WFC
                     spawnedTiles[x, y] = instance;
                 }
                 collapsedTiles[x, y] = tile;
-                // ValidateConnectionsAt(x, y);
-
             }
         }
 
@@ -532,50 +466,6 @@ namespace WFC
             }
         }
 
-        // private void ValidateConnectionsAt(int x, int y)
-        // {
-        //     if (collapsedTiles == null)
-        //     {
-        //         return;
-        //     }
-        //
-        //     Tile center = collapsedTiles[x, y];
-        //     if (center == null)
-        //     {
-        //         return;
-        //     }
-        //
-        //     ValidateNeighborConnection(center, x, y, x, y + 1, Direction.North);
-        //     ValidateNeighborConnection(center, x, y, x + 1, y, Direction.East);
-        //     ValidateNeighborConnection(center, x, y, x, y - 1, Direction.South);
-        //     ValidateNeighborConnection(center, x, y, x - 1, y, Direction.West);
-        // }
-
-        // private void ValidateNeighborConnection(Tile center, int cx, int cy, int nx, int ny, Direction directionFromCenter)
-        // {
-        //     if (nx < 0 || nx >= width || ny < 0 || ny >= height)
-        //     {
-        //         return;
-        //     }
-        //
-        //     Tile neighbor = collapsedTiles[nx, ny];
-        //     if (neighbor == null)
-        //     {
-        //         return;
-        //     }
-        //
-        //     bool isCompatible = IsCompatibleWith(center, neighbor, directionFromCenter)
-        //         && IsCompatibleWith(neighbor, center, DirectionUtils.Opposite(directionFromCenter));
-        //
-        //     if (isCompatible)
-        //     {
-        //         Debug.Log($"Tiles connected correctly: ({cx},{cy}) -> ({nx},{ny}) dir={directionFromCenter}");
-        //     }
-        //     else
-        //     {
-        //         Debug.LogWarning($"Tiles connected incorrectly: ({cx},{cy}) -> ({nx},{ny}) dir={directionFromCenter}");
-        //     }
-        // }
 
         private void PruneIsolatedTiles()
         {
@@ -708,74 +598,6 @@ namespace WFC
 
             return container;
         }
-
-        private static readonly Direction[] CardinalDirections =
-        {
-            Direction.North,
-            Direction.East,
-            Direction.South,
-            Direction.West
-        };
-
-        // private static bool IsCompatibleWith(Tile tile, Tile other, Direction direction)
-        // {
-        //     if (tile == null || other == null)
-        //     {
-        //         return false;
-        //     }
-        //
-        //     Direction thisCon = tile.GetRotatedConnections();
-        //     Direction otherCon = other.GetRotatedConnections();
-        //     bool thisHas = DirectionUtils.Has(thisCon, direction);
-        //     bool otherHas = DirectionUtils.Has(otherCon, DirectionUtils.Opposite(direction));
-        //
-        //     if (thisHas != otherHas)
-        //     {
-        //         return false;
-        //     }
-        //
-        //     if (!thisHas && !otherHas)
-        //     {
-        //         return true;
-        //     }
-        //
-        //     bool byType = IsTypeCompatible(tile, other, direction);
-        //     bool byExplicitRule = HasExplicitConnection(tile, other, direction)
-        //                           && HasExplicitConnection(other, tile, DirectionUtils.Opposite(direction));
-        //     return byExplicitRule || byType;
-        // }
-
-        private static bool IsTypeCompatible(Tile tile, Tile other, Direction direction)
-        {
-            ConnectionTypeMask allowedFromThis = tile.GetAllowedTypesForDirection(direction);
-            ConnectionTypeMask allowedFromOther = other.GetAllowedTypesForDirection(DirectionUtils.Opposite(direction));
-            ConnectionTypeMask otherType = Tile.MaskForTileType(other.tileType);
-            ConnectionTypeMask thisType = Tile.MaskForTileType(tile.tileType);
-            return (allowedFromThis & otherType) != 0 && (allowedFromOther & thisType) != 0;
-        }
-
-        // private static bool HasExplicitConnection(Tile tile, Tile other, Direction direction)
-        // {
-        //     List<ConnectedTile> connectedTiles = tile.connectedTiles;
-        //     if (connectedTiles == null || connectedTiles.Count == 0)
-        //     {
-        //         return false;
-        //     }
-        //
-        //     foreach (var connection in connectedTiles)
-        //     {
-        //         if (connection == null || connection.tile == null) continue;
-        //         if (connection.tile != other) continue;
-        //
-        //         Direction rotatedDirection = DirectionUtils.Rotate(connection.direction, tile.rotation);
-        //         if (DirectionUtils.Has(rotatedDirection, direction))
-        //         {
-        //             return true;
-        //         }
-        //     }
-        //
-        //     return false;
-        // }
 
         private static string FormatTileDetails(Tile tile)
         {
