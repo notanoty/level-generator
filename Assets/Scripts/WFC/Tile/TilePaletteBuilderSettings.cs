@@ -16,6 +16,7 @@ namespace WFC
 			public string purpose;
 			public Color32 color = new Color32(255, 255, 255, 255);
 			public float height = 1f;
+			public Texture2D texture;
 			[FormerlySerializedAs("gameObject")]
 			public GameObject[] gameObjects;
 		}
@@ -127,7 +128,7 @@ namespace WFC
 			for (int i = 0; i < colors.Count; i++)
 			{
 				PaletteColorSetting setting = colors[i];
-				entries.Add(new TilePaletteEntry(setting.id, setting.purpose, setting.color, setting.height, setting.gameObjects));
+				entries.Add(new TilePaletteEntry(setting.id, setting.purpose, setting.color, setting.height, setting.gameObjects, setting.texture));
 			}
 
 			string resolvedDefaultId = string.IsNullOrWhiteSpace(defaultId) && colors.Count > 0 ? colors[0].id : defaultId;

@@ -7,6 +7,9 @@ namespace Editor.WFC.TileBuilder
 {
     public class TileBulder
     {
+        private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
+        private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
+
         public TileBulder(TextureTileBuilder textureTileBuilder)
         {
             _ = textureTileBuilder;
@@ -48,7 +51,7 @@ namespace Editor.WFC.TileBuilder
 
 
         public void BuildObjectOptimized(int x, int y, GameObject tile, Color32 pixelColor, float objectHeight,
-            float tileWidth, float tileDepth, Color32[] pixels, int width, int height, bool[,] processed)
+            Texture2D texture, float tileWidth, float tileDepth, Color32[] pixels, int width, int height, bool[,] processed)
         {
             if (tileWidth <= 0f || tileDepth <= 0f)
             {
@@ -74,7 +77,7 @@ namespace Editor.WFC.TileBuilder
             Undo.RegisterCreatedObjectUndo(cube, "Build Optimized Pixel Cube");
 #endif
 
-            FixShader(pixelColor, cube);
+            FixShader(pixelColor, cube, texture);
         }
 
         public void BuildObject(int x, int y, GameObject tile, GameObject model, float objectHeight,
@@ -134,7 +137,7 @@ namespace Editor.WFC.TileBuilder
 #endif
         }
 
-        private static void FixShader(Color32 pixelColor, GameObject cube)
+        private static void FixShader(Color32 pixelColor, GameObject cube, Texture2D texture = null)
         {
             Renderer cubeRenderer = cube.GetComponent<Renderer>();
             if (cubeRenderer)
@@ -147,9 +150,47 @@ namespace Editor.WFC.TileBuilder
                 }
 
                 Material material = new Material(shader);
-                material.color = pixelColor;
+                ApplyMaterialAppearance(material, pixelColor, texture);
                 cubeRenderer.sharedMaterial = material;
             }
+        }
+
+        private static void ApplyMaterialAppearance(Material material, Color color, Texture2D texture)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            if (texture != null)
+            {
+                if (material.HasProperty(BaseMapId))
+                {
+                    material.SetTexture(BaseMapId, texture);
+                }
+
+                if (material.HasProperty(MainTexId))
+                {
+                    material.SetTexture(MainTexId, texture);
+                }
+
+                material.mainTexture = texture;
+                material.color = Color.white;
+                return;
+            }
+
+            if (material.HasProperty(BaseMapId))
+            {
+                material.SetTexture(BaseMapId, null);
+            }
+
+            if (material.HasProperty(MainTexId))
+            {
+                material.SetTexture(MainTexId, null);
+            }
+
+            material.mainTexture = null;
+            material.color = color;
         }
 
         private static GameObject CreateRectangleCube(GameObject tile, int x, int y, int rectWidth, int rectHeight,
@@ -265,8 +306,10 @@ namespace Editor.WFC.TileBuilder
                 }
 
                 Color c = src.color;
+                Texture2D srcTexture = src.mainTexture as Texture2D;
+                string textureKey = GetTextureKey(srcTexture);
                 string matName =
-                    $"Mat_{(int)(c.r * 255f)}_{(int)(c.g * 255f)}_{(int)(c.b * 255f)}_{(int)(c.a * 255f)}.mat";
+                    $"Mat_{(int)(c.r * 255f)}_{(int)(c.g * 255f)}_{(int)(c.b * 255f)}_{(int)(c.a * 255f)}_{textureKey}.mat";
                 string matPath = materialsFolder + "/" + matName;
 
                 Material assetMat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
@@ -279,9 +322,12 @@ namespace Editor.WFC.TileBuilder
                     }
 
                     assetMat = new Material(shader);
-                    assetMat.color = c;
+                    ApplyMaterialAppearance(assetMat, c, srcTexture);
                     AssetDatabase.CreateAsset(assetMat, matPath);
                 }
+
+                ApplyMaterialAppearance(assetMat, c, srcTexture);
+                EditorUtility.SetDirty(assetMat);
 
                 r.sharedMaterial = assetMat;
             }
@@ -302,6 +348,45 @@ namespace Editor.WFC.TileBuilder
             }
 
             return Shader.Find("Sprites/Default");
+        }
+
+        private static string GetTextureKey(Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return "NoTex";
+            }
+
+            string texturePath = AssetDatabase.GetAssetPath(texture);
+            if (!string.IsNullOrEmpty(texturePath))
+            {
+                string guid = AssetDatabase.AssetPathToGUID(texturePath);
+                if (!string.IsNullOrEmpty(guid))
+                {
+                    return guid;
+                }
+
+                return SanitizeForAssetName(texturePath);
+            }
+
+            return SanitizeForAssetName(texture.name);
+        }
+
+        private static string SanitizeForAssetName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "Unnamed";
+            }
+
+            char[] invalid = System.IO.Path.GetInvalidFileNameChars();
+            string sanitized = value;
+            for (int i = 0; i < invalid.Length; i++)
+            {
+                sanitized = sanitized.Replace(invalid[i], '_');
+            }
+
+            return sanitized.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
         }
 
 

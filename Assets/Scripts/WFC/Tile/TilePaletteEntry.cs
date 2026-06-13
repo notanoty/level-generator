@@ -9,14 +9,16 @@ namespace WFC
         public Color32 Color { get; }
         public float Height { get; }
         public readonly GameObject[] GameObjects;
+        public Texture2D Texture { get; }
 
-        internal TilePaletteEntry(string id, string purpose, Color32 color, float height, GameObject[] gameObjects = null)
+        internal TilePaletteEntry(string id, string purpose, Color32 color, float height, GameObject[] gameObjects = null, Texture2D texture = null)
         {
             Id = id;
             Purpose = purpose;
             Color = color;
             Height = height;
             GameObjects = gameObjects;
+            Texture = texture;
         }
     }
 }

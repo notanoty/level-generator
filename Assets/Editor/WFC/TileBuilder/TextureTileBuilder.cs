@@ -183,8 +183,8 @@ namespace Editor.WFC.TileBuilder
                             }
                             else
                             {
-                                TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor, entry.Height,
-                                    tileWidth, tileDepth, pixels, width, height, processed);
+                                  TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor, entry.Height, entry.Texture,
+                                      tileWidth, tileDepth, pixels, width, height, processed);
                                 Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{entry.Purpose}' in the palette.");
                             }
                         }
