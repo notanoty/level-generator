@@ -97,24 +97,37 @@ namespace Editor.WFC.TileBuilder
             }
 
             instance.name = $"{model.name}_{x}_{y}";
-            instance.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             float cellWidth = tileWidth / width;
             float cellDepth = tileDepth / height;
-            Vector3 localPosition = GetCellLocalPosition(x, y, 1, 1, cellWidth, cellDepth, tileWidth, tileDepth,
-                objectHeight);
             Vector3 parentScale = GetSafeScale(tile.transform.lossyScale);
+            Vector3 localPosition = GetCellLocalPosition(x, y, 1, 1, cellWidth, cellDepth, tileWidth, tileDepth,
+                0f);
 
-            instance.transform.localPosition = new Vector3(
-                localPosition.x ,
-                localPosition.y,
-                localPosition.z);
-            
-            instance.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-            
             instance.transform.localScale = new Vector3(
                 instance.transform.localScale.x / parentScale.x,
                 instance.transform.localScale.y / parentScale.y,
                 instance.transform.localScale.z / parentScale.z);
+
+            instance.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            instance.transform.localPosition = new Vector3(
+                localPosition.x,
+                0f,
+                localPosition.z);
+
+            Bounds worldBounds = CalculateCombinedBounds(instance);
+            if (worldBounds.size != Vector3.zero)
+            {
+                float targetBottomHeight = Mathf.Max(0f, objectHeight);
+                float yOffset = (targetBottomHeight - worldBounds.min.y) / parentScale.y;
+                instance.transform.localPosition += new Vector3(0f, yOffset, 0f);
+            }
+            else
+            {
+                instance.transform.localPosition = new Vector3(
+                    localPosition.x,
+                    Mathf.Max(0f, objectHeight),
+                    localPosition.z);
+            }
 
 #if UNITY_EDITOR
             Undo.RegisterCreatedObjectUndo(instance, "Build Pixel Model");
@@ -198,6 +211,26 @@ namespace Editor.WFC.TileBuilder
                 Mathf.Abs(scale.x) < 0.0001f ? 1f : scale.x,
                 Mathf.Abs(scale.y) < 0.0001f ? 1f : scale.y,
                 Mathf.Abs(scale.z) < 0.0001f ? 1f : scale.z);
+        }
+
+        private static Bounds CalculateCombinedBounds(GameObject root)
+        {
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            if (renderers == null || renderers.Length == 0)
+            {
+                return default;
+            }
+
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                if (renderers[i] != null)
+                {
+                    bounds.Encapsulate(renderers[i].bounds);
+                }
+            }
+
+            return bounds;
         }
 
         public void PersistGeneratedCubeMaterials(GameObject root, string prefabPath)
