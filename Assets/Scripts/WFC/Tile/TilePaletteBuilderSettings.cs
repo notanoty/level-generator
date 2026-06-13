@@ -15,6 +15,7 @@ namespace WFC
 			public string purpose;
 			public Color32 color = new Color32(255, 255, 255, 255);
 			public float height = 1f;
+			public GameObject gameObject;
 		}
 
 		[SerializeField]
@@ -32,6 +33,12 @@ namespace WFC
 		private void Reset()
 		{
 			LoadDefaultsFromJson();
+		}
+
+		public void ResetPaletteFromJson()
+		{
+			LoadDefaultsFromJson();
+			Debug.Log("Reset Palette From JSON");
 		}
 
 		private void OnValidate()
@@ -68,7 +75,8 @@ namespace WFC
 					id = entry.Id,
 					purpose = entry.Purpose,
 					color = entry.Color,
-					height = entry.Height
+					height = entry.Height,
+					gameObject = null
 				});
 			}
 
@@ -113,7 +121,15 @@ namespace WFC
 				LoadDefaultsFromJson();
 			}
 
-			return TilePalette.LoadFromJson(JsonUtility.ToJson(CreatePaletteFile()));
+			List<TilePaletteEntry> entries = new List<TilePaletteEntry>(colors.Count);
+			for (int i = 0; i < colors.Count; i++)
+			{
+				PaletteColorSetting setting = colors[i];
+				entries.Add(new TilePaletteEntry(setting.id, setting.purpose, setting.color, setting.height, setting.gameObject));
+			}
+
+			string resolvedDefaultId = string.IsNullOrWhiteSpace(defaultId) && colors.Count > 0 ? colors[0].id : defaultId;
+			return TilePalette.Create(resolvedDefaultId, entries);
 		}
 
 		private PaletteFile CreatePaletteFile()

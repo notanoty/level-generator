@@ -1,82 +1,104 @@
 {
-    "default": "empty",
-    "colors": [
-        {
-            "id": "empty",
-            "purpose": "Empty",
-            "rgba": [
-                128,
-                128,
-                128,
-                255
-            ],
-            "height": 1.0
-        },
-        {
-            "id": "pathway",
-            "purpose": "Pathway",
-            "rgba": [
-                0,
-                0,
-                0,
-                255
-            ],
-            "height": 1.0
-        },
-        {
-            "id": "river",
-            "purpose": "River",
-            "rgba": [
-                0,
-                100,
-                255,
-                255
-            ],
-            "height": 1.0
-        },
-        {
-            "id": "grass",
-            "purpose": "Grass",
-            "rgba": [
-                60,
-                160,
-                60,
-                255
-            ],
-            "height": 1.0
-        },
-        {
-            "id": "tree",
-            "purpose": "Tree",
-            "rgba": [
-                120,
-                72,
-                32,
-                255
-            ],
-            "height": 1.0
-        },
-        {
-            "id": "wall",
-            "purpose": "Wall",
-            "rgba": [
-                90,
-                90,
-                90,
-                255
-            ],
-            "height": 30.0
-        },
-        {
-            "id": "NewThing",
-            "purpose": "New Color",
-            "rgba": [
-                255,
-                5,
-                255,
-                255
-            ],
-            "height": 100.0
-        }
-    ]
+  "default": "empty",
+  "colors": [
+    {
+      "id": "empty",
+      "purpose": "Empty",
+      "rgba": [
+        128,
+        128,
+        128,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "pathway",
+      "purpose": "Pathway",
+      "rgba": [
+        0,
+        0,
+        0,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "river",
+      "purpose": "River",
+      "rgba": [
+        0,
+        100,
+        255,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "grass",
+      "purpose": "Grass",
+      "rgba": [
+        60,
+        160,
+        60,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "tree",
+      "purpose": "Tree",
+      "rgba": [
+        120,
+        72,
+        32,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "wall",
+      "purpose": "Wall",
+      "rgba": [
+        90,
+        90,
+        90,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "NewThing",
+      "purpose": "New Color",
+      "rgba": [
+        255,
+        5,
+        255,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "new_color",
+      "purpose": "New Color",
+      "rgba": [
+        255,
+        255,
+        255,
+        255
+      ],
+      "height": 1.0
+    },
+    {
+      "id": "lava",
+      "purpose": "Lava",
+      "rgba": [
+        255,
+        0,
+        0,
+        255
+      ],
+      "height": 1.0
+    }
+  ]
 }

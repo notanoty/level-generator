@@ -76,6 +76,47 @@ namespace Editor.WFC.TileBuilder
             FixShader(pixelColor, cube);
         }
 
+        public void BuildObject(int x, int y, GameObject tile, GameObject model, float objectHeight,
+            float tileWidth, float tileDepth, int width, int height)
+        {
+            if (!tile || !model)
+            {
+                return;
+            }
+
+            if (tileWidth <= 0f || tileDepth <= 0f || width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            GameObject instance = InstantiateSourceObject(model, tile);
+            if (instance == null)
+            {
+                return;
+            }
+
+            instance.name = $"{model.name}_{x}_{y}";
+            instance.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            float cellWidth = tileWidth / width;
+            float cellDepth = tileDepth / height;
+            Vector3 localPosition = GetCellLocalPosition(x, y, 1, 1, cellWidth, cellDepth, tileWidth, tileDepth,
+                objectHeight);
+            Vector3 parentScale = GetSafeScale(tile.transform.lossyScale);
+
+            instance.transform.localPosition = new Vector3(
+                localPosition.x ,
+                localPosition.y,
+                localPosition.z);
+            instance.transform.localScale = new Vector3(
+                instance.transform.localScale.x / parentScale.x,
+                instance.transform.localScale.y / parentScale.y,
+                instance.transform.localScale.z / parentScale.z);
+
+#if UNITY_EDITOR
+            Undo.RegisterCreatedObjectUndo(instance, "Build Pixel Model");
+#endif
+        }
+
         private static void FixShader(Color32 pixelColor, GameObject cube)
         {
             Renderer cubeRenderer = cube.GetComponent<Renderer>();
@@ -97,21 +138,62 @@ namespace Editor.WFC.TileBuilder
         private static GameObject CreateRectangleCube(GameObject tile, int x, int y, int rectWidth, int rectHeight,
             float cellWidth, float cellDepth, float tileWidth, float tileDepth, float height)
         {
+            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = $"Pixel_{x}_{y}";
+            cube.transform.SetParent(tile.transform, false);
+            cube.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            cube.transform.localPosition = GetCellLocalPosition(x, y, rectWidth, rectHeight, cellWidth, cellDepth,
+                tileWidth, tileDepth, height);
+            cube.transform.localScale = new Vector3(cellWidth * rectWidth / 10f, Mathf.Max(0f, height), cellDepth * rectHeight / 10f);
+            return cube;
+        }
+
+        private static GameObject InstantiateSourceObject(GameObject source, GameObject parent)
+        {
+            GameObject instance;
+
+#if UNITY_EDITOR
+            if (PrefabUtility.IsPartOfPrefabAsset(source))
+            {
+                instance = PrefabUtility.InstantiatePrefab(source) as GameObject;
+            }
+            else
+            {
+                instance = UnityEngine.Object.Instantiate(source);
+            }
+#else
+            instance = UnityEngine.Object.Instantiate(source);
+#endif
+
+            if (instance == null)
+            {
+                return null;
+            }
+
+            instance.transform.SetParent(parent.transform, false);
+            return instance;
+        }
+
+        private static Vector3 GetCellLocalPosition(int x, int y, int rectWidth, int rectHeight, float cellWidth,
+            float cellDepth, float tileWidth, float tileDepth, float height)
+        {
             int cellsWide = Mathf.Max(rectWidth, Mathf.RoundToInt(tileWidth / cellWidth));
             int cellsDeep = Mathf.Max(rectHeight, Mathf.RoundToInt(tileDepth / cellDepth));
             int mirroredX = Mathf.Max(0, cellsWide - x - rectWidth);
             int mirroredY = Mathf.Max(0, cellsDeep - y - rectHeight);
 
-            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = $"Pixel_{x}_{y}";
-            cube.transform.SetParent(tile.transform, false);
-            cube.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            cube.transform.localPosition = new Vector3(
+            return new Vector3(
                 mirroredX * cellWidth / 10f - tileWidth * 0.5f + cellWidth * rectWidth * 0.05f + 45,
                 Mathf.Max(0f, height) * 0.5f,
                 mirroredY * cellDepth / 10f - tileDepth * 0.5f + cellDepth * rectHeight * 0.05f + 45);
-            cube.transform.localScale = new Vector3(cellWidth * rectWidth / 10f, Mathf.Max(0f, height), cellDepth * rectHeight / 10f);
-            return cube;
+        }
+
+        private static Vector3 GetSafeScale(Vector3 scale)
+        {
+            return new Vector3(
+                Mathf.Abs(scale.x) < 0.0001f ? 1f : scale.x,
+                Mathf.Abs(scale.y) < 0.0001f ? 1f : scale.y,
+                Mathf.Abs(scale.z) < 0.0001f ? 1f : scale.z);
         }
 
         public void PersistGeneratedCubeMaterials(GameObject root, string prefabPath)

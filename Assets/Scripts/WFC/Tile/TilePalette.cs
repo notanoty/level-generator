@@ -45,6 +45,74 @@ namespace WFC
             return FromPaletteFile(paletteFile);
         }
 
+        internal static TilePalette Create(string defaultId, IReadOnlyList<TilePaletteEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                throw new FormatException("Palette must contain at least one entry.");
+            }
+
+            var entriesById = new Dictionary<string, TilePaletteEntry>(StringComparer.OrdinalIgnoreCase);
+            var entriesByPurpose = new Dictionary<string, TilePaletteEntry>(StringComparer.OrdinalIgnoreCase);
+            var entriesByColor = new Dictionary<int, TilePaletteEntry>();
+            var copiedEntries = new List<TilePaletteEntry>(entries.Count);
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                TilePaletteEntry entry = entries[i];
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                string id = (entry.Id ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    throw new FormatException("Palette entry is missing an id.");
+                }
+
+                if (entriesById.ContainsKey(id))
+                {
+                    throw new FormatException($"Duplicate palette id found: {id}");
+                }
+
+                string purpose = string.IsNullOrWhiteSpace(entry.Purpose) ? id : entry.Purpose.Trim();
+                if (entriesByPurpose.ContainsKey(purpose))
+                {
+                    throw new FormatException($"Duplicate palette purpose found: {purpose}");
+                }
+
+                if (float.IsNaN(entry.Height) || float.IsInfinity(entry.Height))
+                {
+                    throw new FormatException($"Palette entry '{id}' must define a finite 'height' value.");
+                }
+
+                int packedColor = PackColor(entry.Color);
+                if (entriesByColor.ContainsKey(packedColor))
+                {
+                    throw new FormatException($"Duplicate palette color found for id '{id}'.");
+                }
+
+                copiedEntries.Add(entry);
+                entriesById.Add(id, entry);
+                entriesByPurpose.Add(purpose, entry);
+                entriesByColor.Add(packedColor, entry);
+            }
+
+            if (copiedEntries.Count == 0)
+            {
+                throw new FormatException("Palette must contain at least one valid entry.");
+            }
+
+            string resolvedDefaultId = string.IsNullOrWhiteSpace(defaultId) ? copiedEntries[0].Id : defaultId.Trim();
+            if (!entriesById.ContainsKey(resolvedDefaultId))
+            {
+                throw new FormatException($"Default palette id '{resolvedDefaultId}' is not defined in the palette entries.");
+            }
+
+            return new TilePalette(resolvedDefaultId, copiedEntries, entriesById, entriesByPurpose, entriesByColor);
+        }
+
         public static TilePalette LoadFromFile(string filePath)
         {
             if (string.IsNullOrWhiteSpace(filePath))

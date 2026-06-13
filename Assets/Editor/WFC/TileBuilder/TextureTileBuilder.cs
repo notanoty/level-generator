@@ -174,9 +174,18 @@ namespace Editor.WFC.TileBuilder
                         Color32 pixelColor = pixels[(y * width) + x];
                         if (_tilePalette.TryGet(pixelColor, out TilePaletteEntry entry))
                         {
-                            TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor, entry.Height,
-                                tileWidth, tileDepth, pixels, width, height, processed);
-                            Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{entry.Purpose}' in the palette.");
+                            if (entry.GameObject != null)
+                            {
+                                TileBulder.BuildObject(x, y, targetTile, entry.GameObject, entry.Height,
+                                    tileWidth, tileDepth, width, height);
+                                Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} and spawned model '{entry.GameObject.name}' for purpose '{entry.Purpose}'.");
+                            }
+                            else
+                            {
+                                TileBulder.BuildObjectOptimized(x, y, targetTile, pixelColor, entry.Height,
+                                    tileWidth, tileDepth, pixels, width, height, processed);
+                                Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} which corresponds to purpose '{entry.Purpose}' in the palette.");
+                            }
                         }
                         else
                         {
