@@ -8,15 +8,15 @@ namespace WFC
         public string Purpose { get; }
         public Color32 Color { get; }
         public float Height { get; }
-        public readonly GameObject GameObject;
+        public readonly GameObject[] GameObjects;
 
-        internal TilePaletteEntry(string id, string purpose, Color32 color, float height, GameObject gameObject = null)
+        internal TilePaletteEntry(string id, string purpose, Color32 color, float height, GameObject[] gameObjects = null)
         {
             Id = id;
             Purpose = purpose;
             Color = color;
             Height = height;
-            GameObject = gameObject;
+            GameObjects = gameObjects;
         }
     }
 }

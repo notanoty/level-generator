@@ -174,11 +174,12 @@ namespace Editor.WFC.TileBuilder
                         Color32 pixelColor = pixels[(y * width) + x];
                         if (_tilePalette.TryGet(pixelColor, out TilePaletteEntry entry))
                         {
-                            if (entry.GameObject != null)
+                              GameObject selectedGameObject = SelectGameObject(entry.GameObjects);
+                              if (selectedGameObject != null)
                             {
-                                TileBulder.BuildObject(x, y, targetTile, entry.GameObject, entry.Height,
+                                  TileBulder.BuildObject(x, y, targetTile, selectedGameObject, entry.Height,
                                     tileWidth, tileDepth, width, height);
-                                Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} and spawned model '{entry.GameObject.name}' for purpose '{entry.Purpose}'.");
+                                  Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} and spawned model '{selectedGameObject.name}' for purpose '{entry.Purpose}'.");
                             }
                             else
                             {
@@ -326,5 +327,46 @@ namespace Editor.WFC.TileBuilder
 
             return material.mainTexture as Texture2D;
         }
+
+          private static GameObject SelectGameObject(GameObject[] gameObjects)
+          {
+              if (gameObjects == null || gameObjects.Length == 0)
+              {
+                  return null;
+              }
+
+              int validCount = 0;
+              for (int i = 0; i < gameObjects.Length; i++)
+              {
+                  if (gameObjects[i] != null)
+                  {
+                      validCount++;
+                  }
+              }
+
+              if (validCount == 0)
+              {
+                  return null;
+              }
+
+              int targetIndex = UnityEngine.Random.Range(0, validCount);
+              for (int i = 0; i < gameObjects.Length; i++)
+              {
+                  GameObject candidate = gameObjects[i];
+                  if (candidate == null)
+                  {
+                      continue;
+                  }
+
+                  if (targetIndex == 0)
+                  {
+                      return candidate;
+                  }
+
+                  targetIndex--;
+              }
+
+              return null;
+          }
     }
 }
