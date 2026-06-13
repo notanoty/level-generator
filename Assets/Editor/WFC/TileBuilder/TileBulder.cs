@@ -1,6 +1,7 @@
 ﻿using System;
 using UnityEditor;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace Editor.WFC.TileBuilder
 {
@@ -107,6 +108,9 @@ namespace Editor.WFC.TileBuilder
                 localPosition.x ,
                 localPosition.y,
                 localPosition.z);
+            
+            instance.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            
             instance.transform.localScale = new Vector3(
                 instance.transform.localScale.x / parentScale.x,
                 instance.transform.localScale.y / parentScale.y,
