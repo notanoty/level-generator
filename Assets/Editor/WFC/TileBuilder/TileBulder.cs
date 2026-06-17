@@ -305,31 +305,22 @@ namespace Editor.WFC.TileBuilder
                     continue;
                 }
 
-                string srcPath = AssetDatabase.GetAssetPath(src);
-                if (!string.IsNullOrEmpty(srcPath))
-                {
-                    continue;
-                }
-
                 Color c = src.color;
                 Texture2D srcTexture = src.mainTexture as Texture2D;
-                string textureKey = GetTextureKey(srcTexture);
-                string matName =
-                    $"Mat_{(int)(c.r * 255f)}_{(int)(c.g * 255f)}_{(int)(c.b * 255f)}_{(int)(c.a * 255f)}_{textureKey}.mat";
+                string matName = GetGeneratedMaterialName(src, c, srcTexture);
                 string matPath = materialsFolder + "/" + matName;
 
                 Material assetMat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
                 if (assetMat == null)
                 {
-                    Shader shader = ResolveSupportedShader();
-                    if (shader == null)
-                    {
-                        continue;
-                    }
-
-                    assetMat = new Material(shader);
-                    ApplyMaterialAppearance(assetMat, c, srcTexture);
+                    assetMat = new Material(src);
+                    assetMat.name = System.IO.Path.GetFileNameWithoutExtension(matName);
                     AssetDatabase.CreateAsset(assetMat, matPath);
+                }
+                else
+                {
+                    assetMat.shader = src.shader;
+                    assetMat.CopyPropertiesFromMaterial(src);
                 }
 
                 ApplyMaterialAppearance(assetMat, c, srcTexture);
@@ -337,6 +328,23 @@ namespace Editor.WFC.TileBuilder
 
                 r.sharedMaterial = assetMat;
             }
+        }
+
+        private static string GetGeneratedMaterialName(Material sourceMaterial, Color color, Texture2D texture)
+        {
+            string sourcePath = sourceMaterial != null ? AssetDatabase.GetAssetPath(sourceMaterial) : null;
+            string sourceId = string.IsNullOrEmpty(sourcePath)
+                ? SanitizeForAssetName(sourceMaterial != null ? sourceMaterial.name : "Material")
+                : AssetDatabase.AssetPathToGUID(sourcePath);
+
+            if (string.IsNullOrWhiteSpace(sourceId))
+            {
+                sourceId = SanitizeForAssetName(sourceMaterial != null ? sourceMaterial.name : "Material");
+            }
+
+            string textureKey = GetTextureKey(texture);
+            return
+                $"Mat_{(int)(color.r * 255f)}_{(int)(color.g * 255f)}_{(int)(color.b * 255f)}_{(int)(color.a * 255f)}_{sourceId}_{textureKey}.mat";
         }
 
         private static Shader ResolveSupportedShader()
