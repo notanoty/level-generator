@@ -51,7 +51,7 @@ namespace Editor.WFC.TileBuilder
 
 
         public void BuildObjectOptimized(int x, int y, GameObject tile, Color32 pixelColor, float objectHeight,
-            Texture2D texture, float tileWidth, float tileDepth, Color32[] pixels, int width, int height, bool[,] processed)
+            Material material, float tileWidth, float tileDepth, Color32[] pixels, int width, int height, bool[,] processed)
         {
             if (tileWidth <= 0f || tileDepth <= 0f)
             {
@@ -77,7 +77,7 @@ namespace Editor.WFC.TileBuilder
             Undo.RegisterCreatedObjectUndo(cube, "Build Optimized Pixel Cube");
 #endif
 
-            FixShader(pixelColor, cube, texture);
+            FixShader(pixelColor, cube, material);
         }
 
         public void BuildObject(int x, int y, GameObject tile, GameObject model, float objectHeight,
@@ -137,11 +137,17 @@ namespace Editor.WFC.TileBuilder
 #endif
         }
 
-        private static void FixShader(Color32 pixelColor, GameObject cube, Texture2D texture = null)
+        private static void FixShader(Color32 pixelColor, GameObject cube, Material sourceMaterial = null)
         {
             Renderer cubeRenderer = cube.GetComponent<Renderer>();
             if (cubeRenderer)
             {
+                if (sourceMaterial != null)
+                {
+                    cubeRenderer.sharedMaterial = sourceMaterial;
+                    return;
+                }
+
                 Shader shader = ResolveSupportedShader();
                 if (!shader)
                 {
@@ -150,7 +156,7 @@ namespace Editor.WFC.TileBuilder
                 }
 
                 Material material = new Material(shader);
-                ApplyMaterialAppearance(material, pixelColor, texture);
+                ApplyMaterialAppearance(material, pixelColor, null);
                 cubeRenderer.sharedMaterial = material;
             }
         }
