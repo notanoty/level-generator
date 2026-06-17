@@ -698,6 +698,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4286611584
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: pathway
@@ -706,6 +707,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4278190080
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: 0c6f37b4151d92f4887615994a8c1ced, type: 2}
     gameObjects: []
   - id: river
@@ -714,6 +716,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294927360
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: grass
@@ -722,6 +725,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4282163260
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: 4006b9f55daf5294b8ba235149de09ea, type: 2}
     gameObjects: []
   - id: tree
@@ -730,6 +734,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4280305784
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 1991462268964490261, guid: 733e0985fe2f8674981f217143ec930a, type: 3}
@@ -747,6 +752,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4284111450
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: Objects
@@ -755,6 +761,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294903295
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 3179381673726648735, guid: 8e8cafcb1b7616233a53ab40ee3e4742, type: 3}
@@ -765,6 +772,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4278255615
     height: 20
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 3786871260859734164, guid: 6a836d053698c4746a6c0fc99830a547, type: 3}
@@ -774,6 +782,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4281808840
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: b84b2e09f88370a4cbd27cef5f656a5d, type: 2}
     gameObjects: []
   initializedFromDefaults: 1
@@ -7205,6 +7214,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4286611584
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: pathway
@@ -7213,6 +7223,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4278190080
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: dfe8b943cfeca9c4890d18fcff4a80f3, type: 2}
     gameObjects: []
   - id: river
@@ -7221,6 +7232,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294927360
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: grass
@@ -7229,6 +7241,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4282163260
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: 4006b9f55daf5294b8ba235149de09ea, type: 2}
     gameObjects: []
   - id: tree
@@ -7237,6 +7250,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4280305784
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 1991462268964490261, guid: 733e0985fe2f8674981f217143ec930a, type: 3}
@@ -7251,6 +7265,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4284111450
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: Objects
@@ -7259,6 +7274,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294903295
     height: 1
+    allowedRotation: 1
     material: {fileID: 0}
     gameObjects:
     - {fileID: 6135164980112218546}
@@ -7273,6 +7289,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4278255615
     height: 20
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 3786871260859734164, guid: 6a836d053698c4746a6c0fc99830a547, type: 3}
@@ -7282,6 +7299,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4281808840
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: b84b2e09f88370a4cbd27cef5f656a5d, type: 2}
     gameObjects: []
   initializedFromDefaults: 1
@@ -10493,6 +10511,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4286611584
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: pathway
@@ -10501,6 +10520,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4278190080
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: 0c6f37b4151d92f4887615994a8c1ced, type: 2}
     gameObjects: []
   - id: river
@@ -10509,6 +10529,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294927360
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: grass
@@ -10517,6 +10538,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4282163260
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: 4006b9f55daf5294b8ba235149de09ea, type: 2}
     gameObjects: []
   - id: tree
@@ -10525,6 +10547,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4280305784
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 8185793832496569501, guid: 3bcf6e78553a7f54c8bf39912b4124e3, type: 3}
@@ -10538,6 +10561,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4284111450
     height: 10
+    allowedRotation: 0
     material: {fileID: 2100000, guid: 4500f7692cf05674cab9c93f1a516fdc, type: 2}
     gameObjects: []
   - id: NewThing
@@ -10546,6 +10570,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294903295
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 100000, guid: 0021dc7ae6ca2cb4bb44c107245b122f, type: 3}
@@ -14279,6 +14304,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4286611584
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: pathway
@@ -14287,6 +14313,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4278190080
     height: 20
+    allowedRotation: 0
     material: {fileID: 2100000, guid: 4500f7692cf05674cab9c93f1a516fdc, type: 2}
     gameObjects: []
   - id: river
@@ -14295,6 +14322,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294927360
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: grass
@@ -14303,6 +14331,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4282163260
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: tree
@@ -14311,6 +14340,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4280305784
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 3179381673726648735, guid: 8e8cafcb1b7616233a53ab40ee3e4742, type: 3}
@@ -14321,6 +14351,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4284111450
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects: []
   - id: Objects
@@ -14329,6 +14360,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4294903295
     height: 1
+    allowedRotation: 0
     material: {fileID: 0}
     gameObjects:
     - {fileID: 1339988686142585141, guid: d4f8f1d4bc910d94ca4591c8d36b7bc3, type: 3}
@@ -14339,6 +14371,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4278255615
     height: 20
+    allowedRotation: 1
     material: {fileID: 0}
     gameObjects:
     - {fileID: 3786871260859734164, guid: 6a836d053698c4746a6c0fc99830a547, type: 3}
@@ -14348,6 +14381,7 @@ MonoBehaviour:
       serializedVersion: 2
       rgba: 4281808840
     height: 1
+    allowedRotation: 0
     material: {fileID: 2100000, guid: b84b2e09f88370a4cbd27cef5f656a5d, type: 2}
     gameObjects: []
   initializedFromDefaults: 1

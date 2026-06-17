@@ -185,7 +185,7 @@ namespace Editor.WFC.TileBuilder
                               if (selectedGameObject != null)
                             {
                                   TileBulder.BuildObject(x, y, targetTile, selectedGameObject, entry.Height,
-                                    tileWidth, tileDepth, width, height);
+                                      tileWidth, tileDepth, width, height, entry.AllowedRotationMode);
                                   Debug.Log($"Pixel at ({x}, {y}) has color {pixelColor} and spawned model '{selectedGameObject.name}' for purpose '{entry.Purpose}'.");
                             }
                             else

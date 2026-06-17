@@ -10,7 +10,8 @@
                 128,
                 255
             ],
-            "height": 1.0
+            "height": 1.0,
+            "allowedRotation": 0
         },
         {
             "id": "pathway",
@@ -21,7 +22,8 @@
                 0,
                 255
             ],
-            "height": 1.0
+            "height": 1.0,
+            "allowedRotation": 0
         },
         {
             "id": "river",
@@ -32,7 +34,8 @@
                 255,
                 255
             ],
-            "height": 1.0
+            "height": 1.0,
+            "allowedRotation": 0
         },
         {
             "id": "grass",
@@ -43,7 +46,8 @@
                 60,
                 255
             ],
-            "height": 1.0
+            "height": 1.0,
+            "allowedRotation": 0
         },
         {
             "id": "tree",
@@ -54,7 +58,8 @@
                 32,
                 255
             ],
-            "height": 1.0
+            "height": 1.0,
+            "allowedRotation": 0
         },
         {
             "id": "wall",
@@ -65,7 +70,8 @@
                 90,
                 255
             ],
-            "height": 1.0
+            "height": 20.0,
+            "allowedRotation": 0
         },
         {
             "id": "Objects",
@@ -76,7 +82,8 @@
                 255,
                 255
             ],
-            "height": 1.0
+            "height": 1.0,
+            "allowedRotation": 0
         },
         {
             "id": "Chest",
@@ -87,7 +94,8 @@
                 0,
                 255
             ],
-            "height": 20.0
+            "height": 1.0,
+            "allowedRotation": 0
         },
         {
             "id": "Lava",
@@ -98,7 +106,8 @@
                 55,
                 255
             ],
-            "height": 1.0
+            "height": 1.0,
+            "allowedRotation": 0
         }
     ]
 }

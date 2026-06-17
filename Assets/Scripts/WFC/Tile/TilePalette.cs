@@ -332,7 +332,7 @@ namespace WFC
                     throw new FormatException($"Duplicate palette color found for id '{id}'.");
                 }
 
-                TilePaletteEntry entry = new TilePaletteEntry(id, purpose, color, height);
+                TilePaletteEntry entry = new TilePaletteEntry(id, purpose, color, height, colorFile.allowedRotation);
                 entries.Add(entry);
                 entriesById.Add(id, entry);
                 entriesByPurpose.Add(purpose, entry);
@@ -419,6 +419,7 @@ namespace WFC
             public string purpose;
             public int[] rgba;
             public float height = 1f;
+            public TilePaletteEntry.AllowedRotation allowedRotation = TilePaletteEntry.AllowedRotation.All;
         }
     }
 }

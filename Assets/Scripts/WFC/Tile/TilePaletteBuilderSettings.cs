@@ -16,6 +16,7 @@ namespace WFC
 			public string purpose;
 			public Color32 color = new Color32(255, 255, 255, 255);
 			public float height = 1f;
+			public TilePaletteEntry.AllowedRotation allowedRotation = TilePaletteEntry.AllowedRotation.All;
 			[FormerlySerializedAs("texture")]
 			public Material material;
 			[FormerlySerializedAs("gameObject")]
@@ -80,6 +81,7 @@ namespace WFC
 					purpose = entry.Purpose,
 					color = entry.Color,
 					height = entry.Height,
+					allowedRotation = entry.AllowedRotationMode,
 					gameObjects = null,
 					material = null
 				});
@@ -130,7 +132,7 @@ namespace WFC
 			for (int i = 0; i < colors.Count; i++)
 			{
 				PaletteColorSetting setting = colors[i];
-				entries.Add(new TilePaletteEntry(setting.id, setting.purpose, setting.color, setting.height, setting.gameObjects, setting.material));
+				entries.Add(new TilePaletteEntry(setting.id, setting.purpose, setting.color, setting.height, setting.allowedRotation, setting.gameObjects, setting.material));
 			}
 
 			string resolvedDefaultId = string.IsNullOrWhiteSpace(defaultId) && colors.Count > 0 ? colors[0].id : defaultId;
@@ -153,7 +155,8 @@ namespace WFC
 					id = setting.id,
 					purpose = setting.purpose,
 					rgba = new int[] { setting.color.r, setting.color.g, setting.color.b, setting.color.a },
-					height = setting.height
+					height = setting.height,
+					allowedRotation = setting.allowedRotation
 				};
 			}
 
@@ -185,6 +188,7 @@ namespace WFC
 				_ = colorFile.purpose;
 				_ = colorFile.rgba;
 				_ = colorFile.height;
+				_ = colorFile.allowedRotation;
 			}
 		}
 
@@ -209,6 +213,7 @@ namespace WFC
 			public string purpose;
 			public int[] rgba;
 			public float height = 1f;
+			public TilePaletteEntry.AllowedRotation allowedRotation = TilePaletteEntry.AllowedRotation.All;
 		}
 	}
 }

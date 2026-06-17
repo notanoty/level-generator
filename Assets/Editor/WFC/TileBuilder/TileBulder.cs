@@ -1,6 +1,7 @@
 ﻿using System;
 using UnityEditor;
 using UnityEngine;
+using WFC;
 using Random = UnityEngine.Random;
 
 namespace Editor.WFC.TileBuilder
@@ -81,7 +82,7 @@ namespace Editor.WFC.TileBuilder
         }
 
         public void BuildObject(int x, int y, GameObject tile, GameObject model, float objectHeight,
-            float tileWidth, float tileDepth, int width, int height)
+            float tileWidth, float tileDepth, int width, int height, TilePaletteEntry.AllowedRotation allowedRotation)
         {
             if (!tile || !model)
             {
@@ -111,7 +112,7 @@ namespace Editor.WFC.TileBuilder
                 instance.transform.localScale.y / parentScale.y,
                 instance.transform.localScale.z / parentScale.z);
 
-            instance.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            instance.transform.localRotation = Quaternion.Euler(0f, GetRandomYawDegrees(allowedRotation), 0f);
             instance.transform.localPosition = new Vector3(
                 localPosition.x,
                 0f,
@@ -135,6 +136,16 @@ namespace Editor.WFC.TileBuilder
 #if UNITY_EDITOR
             Undo.RegisterCreatedObjectUndo(instance, "Build Pixel Model");
 #endif
+        }
+
+        private static float GetRandomYawDegrees(TilePaletteEntry.AllowedRotation allowedRotation)
+        {
+            if (allowedRotation == TilePaletteEntry.AllowedRotation.Degrees90)
+            {
+                return Random.Range(0, 4) * 90f;
+            }
+
+            return Random.Range(0f, 360f);
         }
 
         private static void FixShader(Color32 pixelColor, GameObject cube, Material sourceMaterial = null)
