@@ -8,7 +8,7 @@ using ConnectedTile = WFC.ConnectedTile;
 using Direction = WFC.Direction;
 using Tile = WFC.Tile;
 
-namespace Editor.WFC
+namespace Editor.WFC.TileGenerator
 {
     /// <summary>
     /// Generates tile prefabs from folders under Assets/TileData.
@@ -24,7 +24,22 @@ namespace Editor.WFC
         private static readonly HashSet<string> EnsuredFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         [MenuItem("Tools/WFC/Generate Tile Prefabs From Tile Data")]
+        public static void ShowWindow()
+        {
+            TilePrefabGeneratorWindow.ShowWindow();
+        }
+
         public static void GenerateAllTilePrefabs()
+        {
+            GenerateTilePrefabsInternal(null);
+        }
+
+        public static void GenerateTilePrefabsForFolder(string selectedTileDataFolder)
+        {
+            GenerateTilePrefabsInternal(selectedTileDataFolder);
+        }
+
+        private static void GenerateTilePrefabsInternal(string selectedTileDataFolder)
         {
             EnsuredFolders.Clear();
 
@@ -34,9 +49,6 @@ namespace Editor.WFC
                 return;
             }
 
-            EnsureFolderExists(GeneratedPrefabRoot);
-            PruneEmptyGeneratedFolders(GeneratedPrefabRoot);
-
             string tileDataRootAbsolute = Path.Combine(Application.dataPath, "TileData");
             if (!Directory.Exists(tileDataRootAbsolute))
             {
@@ -44,7 +56,17 @@ namespace Editor.WFC
                 return;
             }
 
-            string[] folders = Directory.GetDirectories(tileDataRootAbsolute, "*", SearchOption.AllDirectories);
+            bool useSelectedFolder = IsValidSelectedTileDataFolder(selectedTileDataFolder);
+            string sourceAssetRoot = useSelectedFolder ? NormalizeAssetPath(selectedTileDataFolder) : TileDataRoot;
+            string sourceAbsoluteRoot = useSelectedFolder ? AssetPathToAbsolute(sourceAssetRoot) : tileDataRootAbsolute;
+            string generatedAssetRoot = useSelectedFolder ? GetGeneratedPrefabFolder(sourceAssetRoot) : GeneratedPrefabRoot;
+
+            EnsureFolderExists(generatedAssetRoot);
+            PruneEmptyGeneratedFolders(generatedAssetRoot);
+
+            List<string> folders = new List<string> { sourceAbsoluteRoot };
+            folders.AddRange(Directory.GetDirectories(sourceAbsoluteRoot, "*", SearchOption.AllDirectories));
+
             int generatedCount = 0;
             int skippedCount = 0;
 
@@ -85,7 +107,30 @@ namespace Editor.WFC
                 AssetDatabase.Refresh();
             }
 
-            Debug.Log($"Tile prefab generation complete. Generated: {generatedCount}, skipped: {skippedCount}.");
+            Debug.Log($"Tile prefab generation complete for {sourceAssetRoot}. Generated: {generatedCount}, skipped: {skippedCount}.");
+        }
+
+        private static bool IsValidSelectedTileDataFolder(string selectedTileDataFolder)
+        {
+            if (string.IsNullOrWhiteSpace(selectedTileDataFolder))
+            {
+                return false;
+            }
+
+            string normalized = NormalizeAssetPath(selectedTileDataFolder);
+            return AssetDatabase.IsValidFolder(normalized) && IsUnderTileDataRoot(normalized);
+        }
+
+        private static string NormalizeAssetPath(string assetPath)
+        {
+            return string.IsNullOrWhiteSpace(assetPath) ? assetPath : assetPath.Replace('\\', '/');
+        }
+
+        private static bool IsUnderTileDataRoot(string assetPath)
+        {
+            string normalized = NormalizeAssetPath(assetPath);
+            return string.Equals(normalized, TileDataRoot, StringComparison.OrdinalIgnoreCase) ||
+                   normalized.StartsWith(TileDataRoot + "/", StringComparison.OrdinalIgnoreCase);
         }
 
         private static int GenerateTilePrefabs(string tileDataFolder, string generatedFolder)

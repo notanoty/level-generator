@@ -22,7 +22,7 @@
                 0,
                 255
             ],
-            "height": 1.0,
+            "height": 20.0,
             "allowedRotation": 0
         },
         {
@@ -70,7 +70,7 @@
                 90,
                 255
             ],
-            "height": 20.0,
+            "height": 1.0,
             "allowedRotation": 0
         },
         {
@@ -94,8 +94,8 @@
                 0,
                 255
             ],
-            "height": 1.0,
-            "allowedRotation": 0
+            "height": 20.0,
+            "allowedRotation": 1
         },
         {
             "id": "Lava",
