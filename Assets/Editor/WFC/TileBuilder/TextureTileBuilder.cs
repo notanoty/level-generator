@@ -8,6 +8,12 @@ namespace Editor.WFC.TileBuilder
     public class TextureTileBuilder : EditorWindow
     {
         private GameObject _tileForOne;
+        [SerializeField]
+        private TilePaletteBuilderSettings tilePaletteSettings;
+
+        [SerializeField]
+        private string tilesFolderPath = "Assets/Prefabs/Tiles/Generated";
+
         private TilePalette _tilePalette;
         private readonly TileBulder _tileBulder;
 
@@ -29,10 +35,11 @@ namespace Editor.WFC.TileBuilder
 
         private void OnGUI()
         {
-
-
             EditorGUILayout.LabelField("Texture Tile Builder", EditorStyles.boldLabel);
             EditorGUILayout.Space();
+
+            DrawPalettePicker();
+            DrawTilesFolderPicker();
 
             _tileForOne = (GameObject)EditorGUILayout.ObjectField("Game Object", _tileForOne, typeof(GameObject), true);
 
@@ -60,8 +67,8 @@ namespace Editor.WFC.TileBuilder
                 return;
             }
 
-            string generatedFolder = "Assets/Prefabs/Tiles/Generated";
-            if (!AssetDatabase.IsValidFolder(generatedFolder))
+            string generatedFolder = ResolveTilesFolderPath();
+            if (string.IsNullOrWhiteSpace(generatedFolder) || !AssetDatabase.IsValidFolder(generatedFolder))
             {
                 Debug.LogWarning($"Generated folder not found: {generatedFolder}");
                 return;
@@ -215,10 +222,13 @@ namespace Editor.WFC.TileBuilder
 
         private TilePalette ResolveTilePalette()
         {
-            TilePaletteBuilderSettings settings = UnityEngine.Object.FindFirstObjectByType<TilePaletteBuilderSettings>();
+            TilePaletteBuilderSettings settings = tilePaletteSettings != null
+                ? tilePaletteSettings
+                : UnityEngine.Object.FindFirstObjectByType<TilePaletteBuilderSettings>();
+
             if (settings == null)
             {
-                Debug.LogWarning("No TilePaletteBuilderSettings found in the current scene. Add one to configure tile palette generation.");
+                Debug.LogWarning("No TilePaletteBuilderSettings selected or found in the current scene. Assign one to configure tile palette generation.");
                 return null;
             }
 
@@ -247,10 +257,16 @@ namespace Editor.WFC.TileBuilder
             }
         }
 
-        private static void ClearAll()
+        private void ClearAll()
         {
-            // Clear all prefabs in Generated folder
-            string generatedFolder = "Assets/Prefabs/Tiles/Generated";
+            // Clear all prefabs in the selected folder
+            string generatedFolder = ResolveTilesFolderPath();
+            if (string.IsNullOrWhiteSpace(generatedFolder) || !AssetDatabase.IsValidFolder(generatedFolder))
+            {
+                Debug.LogWarning($"Generated folder not found: {generatedFolder}");
+                return;
+            }
+
             string[] prefabGUIDs = AssetDatabase.FindAssets("t:Prefab", new[] { generatedFolder });
 
             foreach (string guid in prefabGUIDs)
@@ -305,6 +321,78 @@ namespace Editor.WFC.TileBuilder
             }
         }
 
+
+
+        private void DrawPalettePicker()
+        {
+            EditorGUI.BeginChangeCheck();
+            tilePaletteSettings = (TilePaletteBuilderSettings)EditorGUILayout.ObjectField(
+                new GUIContent("Palette Settings", "Select the TilePaletteBuilderSettings used to build the palette for generation."),
+                tilePaletteSettings, typeof(TilePaletteBuilderSettings), true);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                Repaint();
+            }
+
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.ObjectField("  Active",
+                    tilePaletteSettings != null
+                        ? tilePaletteSettings
+                        : UnityEngine.Object.FindFirstObjectByType<TilePaletteBuilderSettings>(),
+                    typeof(TilePaletteBuilderSettings), true);
+            }
+        }
+
+        private void DrawTilesFolderPicker()
+        {
+            string currentPath = tilesFolderPath;
+            DefaultAsset currentFolder = string.IsNullOrEmpty(currentPath)
+                ? null
+                : AssetDatabase.LoadAssetAtPath<DefaultAsset>(currentPath);
+
+            EditorGUI.BeginChangeCheck();
+            DefaultAsset picked = (DefaultAsset)EditorGUILayout.ObjectField(
+                new GUIContent("Tiles Folder", "Drag a Project folder to choose which prefabs are processed by Generate All/Clear All."),
+                currentFolder, typeof(DefaultAsset), false);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (picked == null)
+                {
+                    tilesFolderPath = string.Empty;
+                }
+                else
+                {
+                    string path = AssetDatabase.GetAssetPath(picked);
+                    if (AssetDatabase.IsValidFolder(path))
+                    {
+                        tilesFolderPath = path;
+                    }
+                    else
+                    {
+                        EditorUtility.DisplayDialog("Invalid Selection",
+                            "Please select a folder (not a file) from the Project window.", "OK");
+                    }
+                }
+            }
+
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.TextField("  Path",
+                    string.IsNullOrEmpty(tilesFolderPath)
+                        ? "(none – falls back to default)"
+                        : tilesFolderPath);
+            }
+        }
+
+        private string ResolveTilesFolderPath()
+        {
+            return string.IsNullOrWhiteSpace(tilesFolderPath)
+                ? "Assets/Prefabs/Tiles/Generated"
+                : tilesFolderPath.Replace('\\', '/');
+        }
 
         private Texture2D GetTexture(GameObject tile)
         {
