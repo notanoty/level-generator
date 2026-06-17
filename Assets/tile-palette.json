@@ -65,15 +65,37 @@
                 90,
                 255
             ],
-            "height": 10.0
+            "height": 1.0
         },
         {
-            "id": "NewThing",
-            "purpose": "New Color",
+            "id": "Objects",
+            "purpose": "Objects",
             "rgba": [
                 255,
                 5,
                 255,
+                255
+            ],
+            "height": 1.0
+        },
+        {
+            "id": "Chest",
+            "purpose": "Chest",
+            "rgba": [
+                255,
+                255,
+                0,
+                255
+            ],
+            "height": 20.0
+        },
+        {
+            "id": "Lava",
+            "purpose": "LAva",
+            "rgba": [
+                200,
+                55,
+                55,
                 255
             ],
             "height": 1.0
