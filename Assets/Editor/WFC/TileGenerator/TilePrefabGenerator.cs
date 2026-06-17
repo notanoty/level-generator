@@ -21,10 +21,13 @@ namespace Editor.WFC
         private const string BasePrefabPath = "Assets/Prefabs/BaseTile.prefab";
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
         private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
+        private static readonly HashSet<string> EnsuredFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         [MenuItem("Tools/WFC/Generate Tile Prefabs From Tile Data")]
         public static void GenerateAllTilePrefabs()
         {
+            EnsuredFolders.Clear();
+
             if (!AssetDatabase.IsValidFolder(TileDataRoot))
             {
                 Debug.LogError($"Tile data root folder not found: {TileDataRoot}");
@@ -32,6 +35,7 @@ namespace Editor.WFC
             }
 
             EnsureFolderExists(GeneratedPrefabRoot);
+            PruneEmptyGeneratedFolders(GeneratedPrefabRoot);
 
             string tileDataRootAbsolute = Path.Combine(Application.dataPath, "TileData");
             if (!Directory.Exists(tileDataRootAbsolute))
@@ -60,7 +64,10 @@ namespace Editor.WFC
                         continue;
                     }
 
-                    int generatedVariants = GenerateTilePrefabs(assetFolder);
+                    string generatedFolder = GetGeneratedPrefabFolder(assetFolder);
+                    EnsureFolderExists(generatedFolder);
+
+                    int generatedVariants = GenerateTilePrefabs(assetFolder, generatedFolder);
                     if (generatedVariants > 0)
                     {
                         generatedCount += generatedVariants;
@@ -81,7 +88,7 @@ namespace Editor.WFC
             Debug.Log($"Tile prefab generation complete. Generated: {generatedCount}, skipped: {skippedCount}.");
         }
 
-        private static int GenerateTilePrefabs(string tileDataFolder)
+        private static int GenerateTilePrefabs(string tileDataFolder, string generatedFolder)
         {
             string jsonPath = Path.Combine(tileDataFolder, "tile.json").Replace('\\', '/');
             string texturePath = Path.Combine(tileDataFolder, "tile.png").Replace('\\', '/');
@@ -134,7 +141,7 @@ namespace Editor.WFC
             {
                 int finalRotation = NormalizeRotation((component != null ? component.rotation : 0) + rotationStep);
                 string variantPrefabName = GetPrefabVariantName(prefabName, finalRotation);
-                string prefabPath = $"{GeneratedPrefabRoot}/{variantPrefabName}.prefab";
+                string prefabPath = $"{generatedFolder}/{variantPrefabName}.prefab";
                 string variantTexturePath = $"{tileDataFolder}/{variantPrefabName}_texture.asset";
                 string variantMaterialPath = $"{tileDataFolder}/{variantPrefabName}.mat";
                 Texture2D variantTexture = GetOrCreateRotatedTexture(variantTexturePath, texture, GetTextureRotation(finalRotation));
@@ -510,6 +517,22 @@ namespace Editor.WFC
             return SanitizeAssetName(Path.GetFileName(tileDataFolder));
         }
 
+        private static string GetGeneratedPrefabFolder(string tileDataFolder)
+        {
+            string normalizedRoot = TileDataRoot.Replace('\\', '/');
+            string normalizedFolder = tileDataFolder.Replace('\\', '/');
+
+            if (!normalizedFolder.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return GeneratedPrefabRoot;
+            }
+
+            string relativePath = normalizedFolder.Substring(normalizedRoot.Length).TrimStart('/');
+            return string.IsNullOrEmpty(relativePath)
+                ? GeneratedPrefabRoot
+                : $"{GeneratedPrefabRoot}/{relativePath}";
+        }
+
         private static string GetPrefabVariantName(string prefabName, int rotationSteps)
         {
             return $"{prefabName}_r{NormalizeRotation(rotationSteps)}";
@@ -718,15 +741,61 @@ namespace Editor.WFC
             }
 
             string current = "Assets";
+            EnsuredFolders.Add(current);
             for (int i = 1; i < segments.Length; i++)
             {
                 string next = segments[i];
                 string candidate = $"{current}/{next}";
-                if (!AssetDatabase.IsValidFolder(candidate))
+                if (EnsuredFolders.Contains(candidate))
                 {
-                    AssetDatabase.CreateFolder(current, next);
+                    current = candidate;
+                    continue;
                 }
+
+                string absoluteCandidate = AssetPathToAbsolute(candidate);
+                if (AssetDatabase.IsValidFolder(candidate) || (!string.IsNullOrEmpty(absoluteCandidate) && Directory.Exists(absoluteCandidate)))
+                {
+                    EnsuredFolders.Add(candidate);
+                    current = candidate;
+                    continue;
+                }
+
+                AssetDatabase.CreateFolder(current, next);
+                EnsuredFolders.Add(candidate);
                 current = candidate;
+            }
+        }
+
+        private static void PruneEmptyGeneratedFolders(string assetFolderPath)
+        {
+            string absoluteRoot = AssetPathToAbsolute(assetFolderPath);
+            if (string.IsNullOrEmpty(absoluteRoot) || !Directory.Exists(absoluteRoot))
+            {
+                return;
+            }
+
+            List<string> directories = new List<string>(Directory.GetDirectories(absoluteRoot, "*", SearchOption.AllDirectories));
+            directories.Sort((left, right) => right.Length.CompareTo(left.Length));
+
+            foreach (string directory in directories)
+            {
+                if (string.Equals(directory, absoluteRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (Directory.GetFileSystemEntries(directory).Length > 0)
+                {
+                    continue;
+                }
+
+                string metaPath = directory + ".meta";
+                if (File.Exists(metaPath))
+                {
+                    File.Delete(metaPath);
+                }
+
+                Directory.Delete(directory, false);
             }
         }
 
