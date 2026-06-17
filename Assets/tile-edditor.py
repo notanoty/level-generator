@@ -9,7 +9,7 @@ import tempfile
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 from typing import List, Sequence, Tuple
 import zlib
 
@@ -243,17 +243,20 @@ def sanitize_name(name: str) -> str:
 	return cleaned or "Tile"
 
 
+def is_tile_folder(folder: Path) -> bool:
+	return folder.is_dir() and (folder / "tile.json").is_file() and (folder / "tile.png").is_file()
+
+
+def list_child_folders(folder: Path) -> List[Path]:
+	if not folder.is_dir():
+		return []
+	return [entry for entry in sorted(folder.iterdir(), key=lambda path: path.name.lower()) if entry.is_dir() and not is_tile_folder(entry)]
+
+
 def list_tile_folders(output_root: Path) -> List[Path]:
 	if not output_root.is_dir():
 		return []
-
-	folders: List[Path] = []
-	for entry in sorted(output_root.iterdir(), key=lambda path: path.name.lower()):
-		if not entry.is_dir():
-			continue
-		if (entry / "tile.json").is_file() and (entry / "tile.png").is_file():
-			folders.append(entry)
-	return folders
+	return [entry for entry in sorted(output_root.iterdir(), key=lambda path: path.name.lower()) if is_tile_folder(entry)]
 
 
 def unique_folder(base: Path, tile_name: str) -> Path:
@@ -705,7 +708,10 @@ class PaletteEditorWindow:
 
 		widgets = [id_var, purpose_var, r_var, g_var, b_var, a_var, height_var]
 		for var in widgets:
-			var.trace_add("write", lambda *_args, row_key=row_key: self._refresh_row_preview(row_key))
+			def _refresh_preview(_var1: str, _var2: str, _var3: str, row_key: str = row_key) -> None:
+				self._refresh_row_preview(row_key)
+
+			var.trace_add("write", _refresh_preview)
 
 		ttk.Entry(frame, textvariable=id_var, width=16).grid(row=0, column=1, padx=(0, 4), sticky="we")
 		ttk.Entry(frame, textvariable=purpose_var, width=16).grid(row=0, column=2, padx=(0, 4), sticky="we")
@@ -822,6 +828,7 @@ class TilePaintApp:
 
 		self.output_root = Path(__file__).resolve().parent / "TileData"
 		self.output_root.mkdir(parents=True, exist_ok=True)
+		self.browser_folder = self.output_root
 		self.model = TileModel(self.palette)
 		self.current_tile_folder: Path | None = None
 		self._palette_editor_window: PaletteEditorWindow | None = None
@@ -838,6 +845,7 @@ class TilePaintApp:
 		self.tool_var = tk.StringVar(value=TOOL_BRUSH)
 		self.active_color_id = tk.StringVar(value=self.palette.default_id)
 		self.active_color_summary_var = tk.StringVar()
+		self.browser_folder_var = tk.StringVar()
 
 		self.tile_name_var = tk.StringVar(value="Tile01")
 		self.width_var = tk.IntVar(value=self.model.width)
@@ -854,6 +862,7 @@ class TilePaintApp:
 		self._refresh_canvas_size()
 		self.redraw_all()
 		self._commit_clean_state()
+		self._refresh_browser_location_summary()
 		self._refresh_tile_gallery()
 
 	def _apply_dark_theme(self) -> None:
@@ -1023,6 +1032,14 @@ class TilePaintApp:
 		gallery_panel = ttk.Labelframe(content, text="Tile Library", padding=4)
 		gallery_panel.pack(side="right", fill="y", padx=(10, 0))
 
+		folder_actions = ttk.Frame(gallery_panel)
+		folder_actions.pack(fill="x", pady=(0, 6))
+		tk.Button(folder_actions, text="Up", command=self._go_up_browser_folder).pack(side="left")
+		tk.Button(folder_actions, text="New Folder", command=self._create_and_open_folder).pack(side="left", padx=(6, 0))
+		tk.Button(folder_actions, text="Root", command=self._go_to_browser_root).pack(side="left", padx=(6, 0))
+
+		tk.Label(gallery_panel, textvariable=self.browser_folder_var, wraplength=GALLERY_PANEL_WIDTH - 12, justify="left").pack(anchor="w", pady=(0, 6))
+
 		ttk.Label(
 			gallery_panel,
 			text="Left-click to open. Right-click for options.",
@@ -1107,6 +1124,78 @@ class TilePaintApp:
 
 		self._palette_editor_window = PaletteEditorWindow(self, add_new_row=True)
 
+	def _folder_display_path(self, folder: Path) -> str:
+		try:
+			relative = folder.resolve().relative_to(self.output_root.resolve())
+		except ValueError:
+			return folder.name
+
+		if not relative.parts:
+			return self.output_root.name
+		return str(Path(self.output_root.name) / relative)
+
+	def _refresh_browser_location_summary(self) -> None:
+		self.browser_folder_var.set(f"Folder: {self._folder_display_path(self.browser_folder)}")
+
+	def _set_browser_folder(self, folder: Path) -> None:
+		resolved_root = self.output_root.resolve()
+		resolved_folder = folder.resolve()
+		try:
+			resolved_folder.relative_to(resolved_root)
+		except ValueError as exc:
+			raise ValueError(f"Folder must be inside {self.output_root}") from exc
+		if not resolved_folder.is_dir():
+			raise ValueError(f"Folder does not exist: {folder}")
+		self.browser_folder = resolved_folder
+		self._refresh_browser_location_summary()
+		self._refresh_tile_gallery()
+
+	def _go_to_browser_root(self) -> None:
+		self._set_browser_folder(self.output_root)
+
+	def _go_up_browser_folder(self) -> None:
+		resolved_root = self.output_root.resolve()
+		current = self.browser_folder.resolve()
+		if current == resolved_root:
+			return
+		parent = current.parent
+		if parent == current:
+			return
+		self._set_browser_folder(parent)
+
+	def _create_folder_in(self, parent: Path) -> Path | None:
+		if not parent.is_dir():
+			messagebox.showerror("New Folder", f"Folder does not exist:\n{parent}")
+			return None
+
+		folder_name = simpledialog.askstring(
+			"New Folder",
+			f"Create a folder inside:\n{self._folder_display_path(parent)}\n\nFolder name:",
+			parent=self.root,
+		)
+		if folder_name is None:
+			return None
+		folder_name = folder_name.strip()
+		if not folder_name:
+			messagebox.showerror("New Folder", "Please enter a folder name.")
+			return None
+
+		folder = unique_folder(parent, folder_name)
+		try:
+			folder.mkdir(parents=True, exist_ok=False)
+		except Exception as exc:
+			messagebox.showerror("New Folder", f"Could not create folder:\n{exc}")
+			return None
+
+		self.browser_folder = folder.resolve()
+		self._refresh_browser_location_summary()
+		self._refresh_tile_gallery()
+		self.status_var.set(f"Created and opened folder {folder.name}.")
+		return folder
+
+	def _create_and_open_folder(self) -> None:
+		self._create_folder_in(self.browser_folder)
+
 	def apply_palette(self, palette: TilePalette) -> None:
 		self.palette = palette
 		self.model.rebind_palette(palette)
@@ -1131,6 +1220,12 @@ class TilePaintApp:
 			widget.bind("<Button-3>", lambda event, tile_folder=folder: self._show_tile_gallery_menu(event, tile_folder))
 			self._bind_gallery_mousewheel(widget)
 
+	def _bind_gallery_folder_item(self, widgets: Sequence[tk.Widget], folder: Path) -> None:
+		for widget in widgets:
+			widget.bind("<Button-1>", lambda _event, folder_path=folder: self._request_open_folder(folder_path))
+			widget.bind("<Button-3>", lambda event, folder_path=folder: self._show_folder_gallery_menu(event, folder_path))
+			self._bind_gallery_mousewheel(widget)
+
 	def _show_tile_gallery_menu(self, event: tk.Event, folder: Path) -> None:
 		menu = tk.Menu(
 			self.root,
@@ -1141,6 +1236,22 @@ class TilePaintApp:
 			activeforeground=DARK_TEXT,
 		)
 		menu.add_command(label="Delete", command=lambda: self._delete_tile(folder))
+		try:
+			menu.tk_popup(event.x_root, event.y_root)
+		finally:
+			menu.grab_release()
+
+	def _show_folder_gallery_menu(self, event: tk.Event, folder: Path) -> None:
+		menu = tk.Menu(
+			self.root,
+			tearoff=0,
+			bg=DARK_PANEL,
+			fg=DARK_TEXT,
+			activebackground=DARK_PANEL_ALT,
+			activeforeground=DARK_TEXT,
+		)
+		menu.add_command(label="Open", command=lambda: self._request_open_folder(folder))
+		menu.add_command(label="New Folder Here", command=lambda: self._create_folder_in(folder))
 		try:
 			menu.tk_popup(event.x_root, event.y_root)
 		finally:
@@ -1215,18 +1326,30 @@ class TilePaintApp:
 			child.destroy()
 		self._gallery_photos.clear()
 
-		folders = list_tile_folders(self.output_root)
-		if not folders:
+		if not self.browser_folder.is_dir():
+			self.browser_folder = self.output_root.resolve()
+			self._refresh_browser_location_summary()
+
+		child_folders = list_child_folders(self.browser_folder)
+		tile_folders = list_tile_folders(self.browser_folder)
+		if not child_folders and not tile_folders:
 			ttk.Label(
 				self.gallery_inner,
-				text="No saved tiles yet.\nSave a tile to see it here.",
+				text="This folder is empty.\nCreate a folder or save a tile to see it here.",
 				wraplength=GALLERY_PANEL_WIDTH - 16,
 				justify="left",
 			).pack(anchor="w", padx=4, pady=8)
 			return
 
 		current_resolved = self.current_tile_folder.resolve() if self.current_tile_folder else None
-		for folder in folders:
+		for folder in child_folders:
+			row = ttk.Frame(self.gallery_inner)
+			row.pack(fill="x", padx=4, pady=4)
+			folder_label = ttk.Label(row, text=f"📁 {folder.name}", wraplength=GALLERY_PANEL_WIDTH - 20, cursor="hand2")
+			folder_label.pack(anchor="w")
+			self._bind_gallery_folder_item((row, folder_label), folder)
+
+		for folder in tile_folders:
 			png_path = folder / "tile.png"
 			row = ttk.Frame(self.gallery_inner)
 			row.pack(fill="x", padx=4, pady=6)
@@ -1283,6 +1406,7 @@ class TilePaintApp:
 
 		self.model = model
 		self.current_tile_folder = folder
+		self.browser_folder = folder.parent.resolve()
 		self.tile_name_var.set(folder.name)
 		self.width_var.set(model.width)
 		self.height_var.set(model.height)
@@ -1296,8 +1420,17 @@ class TilePaintApp:
 		self._refresh_canvas_size()
 		self.redraw_all()
 		self._commit_clean_state()
+		self._refresh_browser_location_summary()
 		self._refresh_tile_gallery()
 		self.status_var.set(f"Opened {folder.name}.")
+
+	def _request_open_folder(self, folder: Path) -> None:
+		try:
+			self._set_browser_folder(folder)
+		except Exception as exc:
+			messagebox.showerror("Open Folder", f"Could not open folder:\n{folder}\n\n{exc}")
+			return
+		self.status_var.set(f"Opened folder {folder.name}.")
 
 	def _refresh_rotation_summary(self) -> None:
 		selected = self.selected_rotation_steps()
@@ -1421,10 +1554,10 @@ class TilePaintApp:
 	def save_tile(self) -> None:
 		self._save_tile(show_success=True)
 
-	def _save_target_folder(self, tile_name: str) -> Path | None:
+	def _save_target_folder(self, tile_name: str) -> Path:
 		if self.current_tile_folder is not None and self.current_tile_folder.name == sanitize_name(tile_name):
 			return self.current_tile_folder
-		return None
+		return unique_folder(self.browser_folder, tile_name)
 
 	def _save_tile(self, *, show_success: bool) -> bool:
 		tile_name = self.tile_name_var.get().strip()
@@ -1438,7 +1571,7 @@ class TilePaintApp:
 		try:
 			saved_folder = self.model.save(
 				tile_name,
-				self.output_root,
+				self.browser_folder,
 				connections,
 				allowed_rotation_steps,
 				target_folder=target_folder,
@@ -1496,7 +1629,7 @@ def run_self_test() -> None:
 		payload = json.loads((first / "tile.json").read_text(encoding="utf-8"))
 		assert payload["width"] == 4 and payload["height"] == 4
 		assert payload["default_color"] == palette.default_id
-		assert payload["cells"][0][0] == grass_id
+		assert payload["cells"][0][0] == pathway_id
 		assert payload["mock_prefab"]["tile_component"]["connections"] == ["North", "East", "South", "West"]
 		assert payload["mock_prefab"]["tile_component"]["allowed_rotation_steps"] == [0, 1, 2, 3]
 
@@ -1534,6 +1667,17 @@ def run_self_test() -> None:
 		assert loaded_connections == ["North", "East", "South", "West"]
 		assert loaded_rotations == [0, 1, 2, 3]
 		assert first in list_tile_folders(root)
+
+		nested_folder = unique_folder(root, "Group One")
+		nested_folder.mkdir(parents=True, exist_ok=False)
+		assert nested_folder in list_child_folders(root)
+
+		nested = TileModel(palette, width=4, height=4)
+		for x, y in connection_slot_positions(4, 4, ["North"]):
+			nested.set_cell(x, y, pathway_id)
+		nested_tile = nested.save("Nested Tile", nested_folder, ["North"], [0, 1, 2, 3])
+		assert nested_tile.parent == nested_folder
+		assert nested_tile in list_tile_folders(nested_folder)
 
 		loaded.set_cell(2, 2, grass_id)
 		loaded.save("ignored", root, loaded_connections, loaded_rotations, target_folder=first)
